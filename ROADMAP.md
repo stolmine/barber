@@ -136,16 +136,18 @@ Project Setup
 5. **macOS-only (v0.1):** CoreAudio. Cross-platform via `cpal` is future work.
 6. **f32 internal format:** Simplifies pipeline, ~4x memory vs i16, fine for modern machines.
 
-## Known Bugs
-
-- **Playhead range after edit:** After cutting material and zooming to fit, playhead only advances proportional to the original file length instead of covering the full visual width. Playback duration is correct — the issue is in `zoom_to_fit` or playhead position mapping not accounting for the updated edit list length.
-
 ## v0.2 Wishlist
 
 ### Editing
 - **Gap delete (Delete):** Delete selection leaving a silent gap; ripple delete moves to Shift+Delete
 - **Cut/Copy/Paste:** Clipboard operations on selections
 - **Undo/redo:** Snapshot `Vec<Region>` for trivial undo stack
+- **Duplicate region:** Copy selected region and insert it adjacent
+- **Reverse selection:** Reverse sample order within selected region
+- **Silence selection:** Replace selection with silence (zero samples)
+- **Fade in/out on edit boundaries:** Crossfade to prevent clicks at cut points
+- **Normalize:** Scale audio to peak at 0dB (or user-specified level)
+- **DC offset removal:** Center waveform on zero crossing
 
 ### Waveform Display
 - **Timeline ruler:** Adaptive time ruler above waveform (seconds/minutes depending on zoom)
@@ -154,28 +156,34 @@ Project Setup
 - **Amplitude control:** Gain adjustment with live waveform preview
 - **Channel separator:** Visual line between stereo L/R channels
 - **Zoom selection to fit:** Zoom so current selection fills the view
+- **Anti-aliased waveforms:** Smooth rendering instead of per-pixel lines
+- **Snap-to-zero-crossing:** Selection edges snap to nearest zero crossing for click-free edits
 
 ### Playback
 - **Phantom playhead:** Ghost marker at play-start position while actual playhead advances
-- **Follow playhead toggle:** Simple setting forcing viewport to keep playhead in center with respect to current zoom level
+- **Follow playhead toggle:** Auto-scroll viewport to keep playhead centered at current zoom
+- **Loop playback:** Loop selected region or entire file
+- **Play selection only:** Audition just the selected region
+- **Speed/pitch control:** Variable playback rate with optional pitch preservation
+- **Auto-restart at EOF:** When play is pressed with playhead at EOF, restart from beginning
 
 ### Interaction
 - **Full hotkey coverage:** Keyboard shortcuts for all operations
 - **Trackpad gestures:** Native pinch-to-zoom and two-finger scroll
 - **Right-click context menu:** Selection-aware actions (cut, copy, paste, delete, crop, export selection)
-- **Prompt to save modified file on quit:** warning when user attempts to quit with modified file in buffer
-- **Automatic loop when hitting play at EOF:** when user hits play and playhead is already at EOF, automatically start playback from BOF
+- **Prompt to save on quit:** Warning when quitting with unsaved modifications
+- **Menu bar:** Standard macOS menu bar for accessibility and discoverability
+- **Drag and drop:** Open files by dropping them onto the window
 
 ### UI Polish (last priority)
 - **Sexier UI:** Better colors, typography, spacing, custom styling
-- **Tabbed Concurrent Projects:** open multiple files at once, freely splice material between them, etc
-- **Anti-aliased waveforms:** they are choppy right now
+- **Tabbed concurrent projects:** Open multiple files, splice material between them
 
 ### Infrastructure
 - Async file loading with progress bar
 - Lock-free audio thread communication
 - Cross-platform audio via `cpal`
 - 24-bit and 32-bit float WAV export
-- AIFF export
-- Fade in/out on edit boundaries
-- Multiple file support / tabs
+- AIFF / OGG / MP3 export
+- Sample rate conversion on export
+- Recent files list
