@@ -8,6 +8,7 @@ pub struct WaveformState {
     pub zoom: f64,
     pub selection: Option<(usize, usize)>,
     pub playhead: usize,
+    pub last_width: f32,
     drag_start: Option<usize>,
 }
 
@@ -18,6 +19,7 @@ impl Default for WaveformState {
             zoom: 1.0,
             selection: None,
             playhead: 0,
+            last_width: 1200.0,
             drag_start: None,
         }
     }
@@ -72,6 +74,8 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
         let total_frames = self.edit_list.total_frames();
         let width = rect.width();
         let height = rect.height();
+
+        self.state.last_width = width;
 
         handle_input(ui, &response, rect, self.state, total_frames);
 

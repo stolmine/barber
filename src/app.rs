@@ -129,7 +129,7 @@ impl BarberApp {
             ToolbarAction::ZoomOut => self.waveform_state.zoom_out(),
             ToolbarAction::ZoomToFit => {
                 if let Some(el) = &self.edit_list {
-                    self.waveform_state.zoom_to_fit(el.total_frames(), 1200.0);
+                    self.waveform_state.zoom_to_fit(el.total_frames(), self.waveform_state.last_width);
                 }
             }
             ToolbarAction::Delete => self.ripple_delete(),
@@ -162,7 +162,7 @@ impl BarberApp {
                 self.edit_list = Some(edit_list);
                 self.file_path = Some(path);
                 self.waveform_state = WaveformState::default();
-                self.waveform_state.zoom_to_fit(total, 1200.0);
+                self.waveform_state.zoom_to_fit(total, self.waveform_state.last_width);
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to decode: {}", e));
@@ -192,6 +192,7 @@ impl BarberApp {
 
     fn ripple_delete(&mut self) {
         let Some((start, end)) = self.waveform_state.selection else { return };
+        let old_total = self.edit_list.as_ref().map(|el| el.total_frames()).unwrap_or(0);
         if let Some(el) = &mut self.edit_list {
             el.ripple_delete(start, end);
             self.waveform_state.selection = None;
@@ -200,19 +201,33 @@ impl BarberApp {
             } else if self.waveform_state.playhead > start {
                 self.waveform_state.playhead = start;
             }
-            self.sync_playback_engine();
         }
+        self.post_edit(old_total);
     }
 
     fn crop(&mut self) {
         let Some((start, end)) = self.waveform_state.selection else { return };
+        let old_total = self.edit_list.as_ref().map(|el| el.total_frames()).unwrap_or(0);
         if let Some(el) = &mut self.edit_list {
             el.crop(start, end);
             self.waveform_state.selection = None;
             self.waveform_state.playhead = 0;
-            self.waveform_state.scroll_offset = 0.0;
-            self.sync_playback_engine();
         }
+        self.post_edit(old_total);
+    }
+
+    fn post_edit(&mut self, old_total: usize) {
+        if let Some(el) = &self.edit_list {
+            let new_total = el.total_frames();
+            if old_total > 0 && new_total > 0 {
+                let ratio = new_total as f64 / old_total as f64;
+                self.waveform_state.zoom *= ratio;
+                self.waveform_state.scroll_offset *= ratio;
+            }
+            let max_scroll = (new_total as f64 - self.waveform_state.last_width as f64 * self.waveform_state.zoom).max(0.0);
+            self.waveform_state.scroll_offset = self.waveform_state.scroll_offset.min(max_scroll);
+        }
+        self.sync_playback_engine();
     }
 
     fn sync_playback_engine(&self) {

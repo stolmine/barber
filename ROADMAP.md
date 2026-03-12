@@ -11,7 +11,7 @@ A simple, fast, lightweight audio editor built from purely open source Rust comp
 - **Parallelism:** `rayon`
 - **File dialogs:** `rfd`
 
-## v0.1 Features
+## v0.1 Features (shipped)
 1. Open audio files (WAV, AIFF, MP3, FLAC via symphonia)
 2. Waveform rendering with zoom/scroll
 3. Audio playback with CoreAudio
@@ -136,10 +136,42 @@ Project Setup
 5. **macOS-only (v0.1):** CoreAudio. Cross-platform via `cpal` is future work.
 6. **f32 internal format:** Simplifies pipeline, ~4x memory vs i16, fine for modern machines.
 
-## Future (v0.2+)
+## Known Bugs
+
+- **Playhead range after edit:** After cutting material and zooming to fit, playhead only advances proportional to the original file length instead of covering the full visual width. Playback duration is correct — the issue is in `zoom_to_fit` or playhead position mapping not accounting for the updated edit list length.
+
+## v0.2 Wishlist
+
+### Editing
+- **Gap delete (Delete):** Delete selection leaving a silent gap; ripple delete moves to Shift+Delete
+- **Cut/Copy/Paste:** Clipboard operations on selections
+- **Undo/redo:** Snapshot `Vec<Region>` for trivial undo stack
+
+### Waveform Display
+- **Timeline ruler:** Adaptive time ruler above waveform (seconds/minutes depending on zoom)
+- **Amplitude ruler:** Per-channel amplitude scale on left side
+- **Vertical zoom:** Scale waveform amplitude independently of window height
+- **Amplitude control:** Gain adjustment with live waveform preview
+- **Channel separator:** Visual line between stereo L/R channels
+- **Zoom selection to fit:** Zoom so current selection fills the view
+
+### Playback
+- **Phantom playhead:** Ghost marker at play-start position while actual playhead advances
+- **Follow playhead toggle:** Simple setting forcing viewport to keep playhead in center with respect to current zoom level
+
+### Interaction
+- **Full hotkey coverage:** Keyboard shortcuts for all operations
+- **Trackpad gestures:** Native pinch-to-zoom and two-finger scroll
+- **Right-click context menu:** Selection-aware actions (cut, copy, paste, delete, crop, export selection)
+- **Prompt to save modified file on quit:** warning when user attempts to quit with modified file in buffer
+
+### UI Polish (last priority)
+- **Sexier UI:** Better colors, typography, spacing, custom styling
+- **Tabbed Concurrent Projects:** open multiple files at once, freely splice material between them, etc
+
+### Infrastructure
 - Async file loading with progress bar
 - Lock-free audio thread communication
-- Undo/redo
 - Cross-platform audio via `cpal`
 - 24-bit and 32-bit float WAV export
 - AIFF export
