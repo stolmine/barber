@@ -162,6 +162,10 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
                 *self.action = Some(ToolbarAction::Normalize);
                 ui.close_menu();
             }
+            if ui.add_enabled(has_sel, egui::Button::new("Remove DC Offset")).clicked() {
+                *self.action = Some(ToolbarAction::RemoveDC);
+                ui.close_menu();
+            }
         });
 
         painter.rect_filled(rect, 0.0, Color32::from_rgb(20, 20, 24));
@@ -317,7 +321,9 @@ fn handle_input(
         }
     }
 
-    if response.clicked_by(egui::PointerButton::Primary) && state.drag_start.is_none() {
+    if response.double_clicked() && total_frames > 0 {
+        state.selection = Some((0, total_frames));
+    } else if response.clicked_by(egui::PointerButton::Primary) && state.drag_start.is_none() {
         if let Some(pos) = response.interact_pointer_pos() {
             let frame = state.x_to_frame(pos.x, &rect);
             state.playhead = frame.min(total_frames);

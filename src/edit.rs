@@ -1,16 +1,37 @@
+const DEFAULT_FADE_LEN: usize = 128;
+
 #[derive(Clone, Debug)]
-pub enum Region {
-    Source { source_start: usize, source_end: usize, gain: f32 },
+pub enum RegionKind {
+    Source { source_start: usize, source_end: usize },
     Silence { len: usize },
-    Reversed { source_start: usize, source_end: usize, gain: f32 },
+    Reversed { source_start: usize, source_end: usize },
+}
+
+#[derive(Clone, Debug)]
+pub struct Region {
+    pub kind: RegionKind,
+    pub gain: f32,
+    pub dc_offset: f32,
+    pub fade_in: usize,
+    pub fade_out: usize,
 }
 
 impl Region {
+    pub fn source(source_start: usize, source_end: usize) -> Self {
+        Self { kind: RegionKind::Source { source_start, source_end }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0 }
+    }
+    pub fn silence(len: usize) -> Self {
+        Self { kind: RegionKind::Silence { len }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0 }
+    }
+    pub fn reversed(source_start: usize, source_end: usize) -> Self {
+        Self { kind: RegionKind::Reversed { source_start, source_end }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0 }
+    }
+
     pub fn len(&self) -> usize {
-        match self {
-            Region::Source { source_start, source_end, .. } => source_end - source_start,
-            Region::Silence { len } => *len,
-            Region::Reversed { source_start, source_end, .. } => source_end - source_start,
+        match &self.kind {
+            RegionKind::Source { source_start, source_end } => source_end - source_start,
+            RegionKind::Silence { len } => *len,
+            RegionKind::Reversed { source_start, source_end } => source_end - source_start,
         }
     }
 }
@@ -18,12 +39,14 @@ impl Region {
 #[derive(Clone, Debug)]
 pub struct EditList {
     regions: Vec<Region>,
+    pub fades_enabled: bool,
 }
 
 impl EditList {
     pub fn from_length(num_frames: usize) -> Self {
         Self {
-            regions: vec![Region::Source { source_start: 0, source_end: num_frames, gain: 1.0 }],
+            regions: vec![Region::source(0, num_frames)],
+            fades_enabled: true,
         }
     }
 
@@ -31,15 +54,26 @@ impl EditList {
         self.regions.iter().map(|r| r.len()).sum()
     }
 
-    pub fn resolve(&self, edit_frame: usize) -> Option<(usize, f32)> {
+    pub fn resolve(&self, edit_frame: usize) -> Option<(usize, f32, f32)> {
         let mut offset = 0;
         for region in &self.regions {
             let rlen = region.len();
             if edit_frame < offset + rlen {
-                return match region {
-                    Region::Source { source_start, gain, .. } => Some((source_start + (edit_frame - offset), *gain)),
-                    Region::Silence { .. } => None,
-                    Region::Reversed { source_end, gain, .. } => Some((source_end - 1 - (edit_frame - offset), *gain)),
+                let pos = edit_frame - offset;
+                let fade_gain = if self.fades_enabled {
+                    let fade_in_env = if region.fade_in > 0 && pos < region.fade_in {
+                        pos as f32 / region.fade_in as f32
+                    } else { 1.0 };
+                    let fade_out_env = if region.fade_out > 0 && pos >= rlen - region.fade_out {
+                        (rlen - 1 - pos) as f32 / region.fade_out as f32
+                    } else { 1.0 };
+                    fade_in_env * fade_out_env
+                } else { 1.0 };
+                let effective_gain = region.gain * fade_gain;
+                return match &region.kind {
+                    RegionKind::Source { source_start, .. } => Some((source_start + pos, effective_gain, region.dc_offset)),
+                    RegionKind::Silence { .. } => None,
+                    RegionKind::Reversed { source_end, .. } => Some((source_end - 1 - pos, effective_gain, region.dc_offset)),
                 };
             }
             offset += rlen;
@@ -47,7 +81,7 @@ impl EditList {
         None
     }
 
-    pub fn iter_source_frames(&self, start: usize, len: usize) -> impl Iterator<Item = Option<(usize, f32)>> + '_ {
+    pub fn iter_source_frames(&self, start: usize, len: usize) -> impl Iterator<Item = Option<(usize, f32, f32)>> + '_ {
         let end = start + len;
         let mut offset = 0usize;
         let mut region_idx = 0usize;
@@ -76,10 +110,21 @@ impl EditList {
                 let region = &self.regions[current_idx];
                 let rlen = region.len();
                 if edit_pos < current_offset + rlen {
-                    let result = match region {
-                        Region::Source { source_start, gain, .. } => Some(Some((source_start + (edit_pos - current_offset), *gain))),
-                        Region::Silence { .. } => Some(None),
-                        Region::Reversed { source_end, gain, .. } => Some(Some((source_end - 1 - (edit_pos - current_offset), *gain))),
+                    let pos = edit_pos - current_offset;
+                    let fade_gain = if self.fades_enabled {
+                        let fade_in_env = if region.fade_in > 0 && pos < region.fade_in {
+                            pos as f32 / region.fade_in as f32
+                        } else { 1.0 };
+                        let fade_out_env = if region.fade_out > 0 && pos >= rlen - region.fade_out {
+                            (rlen - 1 - pos) as f32 / region.fade_out as f32
+                        } else { 1.0 };
+                        fade_in_env * fade_out_env
+                    } else { 1.0 };
+                    let effective_gain = region.gain * fade_gain;
+                    let result = match &region.kind {
+                        RegionKind::Source { source_start, .. } => Some(Some((source_start + pos, effective_gain, region.dc_offset))),
+                        RegionKind::Silence { .. } => Some(None),
+                        RegionKind::Reversed { source_end, .. } => Some(Some((source_end - 1 - pos, effective_gain, region.dc_offset))),
                     };
                     edit_pos += 1;
                     return result;
@@ -110,9 +155,8 @@ impl EditList {
             let overlap_start = start.max(r_start);
             let overlap_end = end.min(r_end);
             if overlap_start < overlap_end {
-                match region {
-                    Region::Silence { .. } => {},
-                    _ => return false,
+                if !matches!(region.kind, RegionKind::Silence { .. }) {
+                    return false;
                 }
                 checked = overlap_end;
             }
@@ -159,6 +203,7 @@ impl EditList {
                 out.push(region.clone());
             }
         });
+        self.apply_boundary_fades_at(start);
     }
 
     pub fn crop(&mut self, start: usize, end: usize) {
@@ -201,6 +246,7 @@ impl EditList {
         if regions.is_empty() {
             return;
         }
+        let insert_len: usize = regions.iter().map(|r| r.len()).sum();
         let mut new_regions = Vec::new();
         let mut offset = 0usize;
         let mut inserted = false;
@@ -228,6 +274,8 @@ impl EditList {
             new_regions.extend_from_slice(regions);
         }
         self.regions = new_regions;
+        self.apply_boundary_fades_at(position);
+        self.apply_boundary_fades_at(position + insert_len);
     }
 
     pub fn gap_delete(&mut self, start: usize, end: usize) {
@@ -235,7 +283,7 @@ impl EditList {
             return;
         }
         let gap_len = end - start;
-        let mut inserted = false;
+        let gap_inserted = &mut false;
         self.transform_regions(start, end, |region, overlap_start, overlap_end, r_start, r_end, out| {
             if overlap_start < overlap_end {
                 let pre_len = overlap_start - r_start;
@@ -243,9 +291,9 @@ impl EditList {
                 if pre_len > 0 {
                     out.push(split_region_prefix(region, pre_len));
                 }
-                if !inserted {
-                    out.push(Region::Silence { len: gap_len });
-                    inserted = true;
+                if !*gap_inserted {
+                    out.push(Region::silence(gap_len));
+                    *gap_inserted = true;
                 }
                 if post_len > 0 {
                     out.push(split_region_suffix(region, overlap_end - r_start, r_end - r_start));
@@ -261,14 +309,16 @@ impl EditList {
         let mut extracted = self.extract_regions(start, end);
         extracted.reverse();
         for region in &mut extracted {
-            *region = match *region {
-                Region::Source { source_start, source_end, gain } => Region::Reversed { source_start, source_end, gain },
-                Region::Reversed { source_start, source_end, gain } => Region::Source { source_start, source_end, gain },
-                Region::Silence { len } => Region::Silence { len },
+            region.kind = match &region.kind {
+                RegionKind::Source { source_start, source_end } => RegionKind::Reversed { source_start: *source_start, source_end: *source_end },
+                RegionKind::Reversed { source_start, source_end } => RegionKind::Source { source_start: *source_start, source_end: *source_end },
+                RegionKind::Silence { len } => RegionKind::Silence { len: *len },
             };
         }
         self.ripple_delete(start, end);
         self.insert(start, &extracted);
+        self.apply_boundary_fades_at(start);
+        self.apply_boundary_fades_at(end);
     }
 
     pub fn for_each_source_range(&self, edit_start: usize, edit_end: usize, mut f: impl FnMut(usize, usize, f32)) {
@@ -284,14 +334,14 @@ impl EditList {
             if overlap_start < overlap_end {
                 let inner_start = overlap_start - r_start;
                 let inner_end = overlap_end - r_start;
-                match region {
-                    Region::Source { source_start, gain, .. } => {
-                        f(source_start + inner_start, source_start + inner_end, *gain);
+                match &region.kind {
+                    RegionKind::Source { source_start, .. } => {
+                        f(source_start + inner_start, source_start + inner_end, region.gain);
                     }
-                    Region::Reversed { source_end, gain, .. } => {
-                        f(source_end - inner_end, source_end - inner_start, *gain);
+                    RegionKind::Reversed { source_end, .. } => {
+                        f(source_end - inner_end, source_end - inner_start, region.gain);
                     }
-                    Region::Silence { .. } => {}
+                    RegionKind::Silence { .. } => {}
                 }
             }
             offset = r_end;
@@ -302,46 +352,95 @@ impl EditList {
         if start >= end { return; }
         let mut extracted = self.extract_regions(start, end);
         for region in &mut extracted {
-            match region {
-                Region::Source { gain, .. } | Region::Reversed { gain, .. } => *gain *= gain_factor,
-                Region::Silence { .. } => {}
-            }
+            region.gain *= gain_factor;
         }
         self.ripple_delete(start, end);
         self.insert(start, &extracted);
     }
+
+    pub fn set_dc_offset_range(&mut self, start: usize, end: usize, dc_offset: f32) {
+        if start >= end { return; }
+        let mut extracted = self.extract_regions(start, end);
+        for region in &mut extracted {
+            region.dc_offset += dc_offset;
+        }
+        self.ripple_delete(start, end);
+        self.insert(start, &extracted);
+    }
+
+    pub fn apply_boundary_fades(&mut self, start_idx: usize, end_idx: usize) {
+        let end_idx = end_idx.min(self.regions.len());
+        let start_idx = start_idx.min(end_idx);
+        for i in start_idx..end_idx {
+            let rlen = self.regions[i].len();
+            let max_fade = rlen / 2;
+            if i == start_idx {
+                self.regions[i].fade_in = DEFAULT_FADE_LEN.min(max_fade);
+            }
+            if i == end_idx - 1 {
+                self.regions[i].fade_out = DEFAULT_FADE_LEN.min(max_fade);
+            }
+        }
+    }
+
+    fn apply_boundary_fades_at(&mut self, edit_frame: usize) {
+        let mut offset = 0;
+        for i in 0..self.regions.len() {
+            let rlen = self.regions[i].len();
+            if offset == edit_frame && i > 0 {
+                let prev_len = self.regions[i - 1].len();
+                self.regions[i - 1].fade_out = DEFAULT_FADE_LEN.min(prev_len / 2);
+                self.regions[i].fade_in = DEFAULT_FADE_LEN.min(rlen / 2);
+                return;
+            }
+            offset += rlen;
+        }
+    }
+
+    fn region_index_at(&self, edit_frame: usize) -> Option<usize> {
+        let mut offset = 0;
+        for (i, region) in self.regions.iter().enumerate() {
+            let rlen = region.len();
+            if edit_frame < offset + rlen {
+                return Some(i);
+            }
+            if edit_frame == offset + rlen {
+                return Some((i + 1).min(self.regions.len() - 1));
+            }
+            offset += rlen;
+        }
+        None
+    }
 }
 
 fn split_region_prefix(region: &Region, prefix_len: usize) -> Region {
-    match region {
-        Region::Source { source_start, gain, .. } => Region::Source {
+    let kind = match &region.kind {
+        RegionKind::Source { source_start, .. } => RegionKind::Source {
             source_start: *source_start,
             source_end: source_start + prefix_len,
-            gain: *gain,
         },
-        Region::Silence { .. } => Region::Silence { len: prefix_len },
-        Region::Reversed { source_end, gain, .. } => Region::Reversed {
+        RegionKind::Silence { .. } => RegionKind::Silence { len: prefix_len },
+        RegionKind::Reversed { source_end, .. } => RegionKind::Reversed {
             source_start: source_end - prefix_len,
             source_end: *source_end,
-            gain: *gain,
         },
-    }
+    };
+    Region { kind, ..region.clone() }
 }
 
 fn split_region_suffix(region: &Region, inner_start: usize, inner_end: usize) -> Region {
-    match region {
-        Region::Source { source_start, gain, .. } => Region::Source {
+    let kind = match &region.kind {
+        RegionKind::Source { source_start, .. } => RegionKind::Source {
             source_start: source_start + inner_start,
             source_end: source_start + inner_end,
-            gain: *gain,
         },
-        Region::Silence { .. } => Region::Silence { len: inner_end - inner_start },
-        Region::Reversed { source_end, gain, .. } => Region::Reversed {
+        RegionKind::Silence { .. } => RegionKind::Silence { len: inner_end - inner_start },
+        RegionKind::Reversed { source_end, .. } => RegionKind::Reversed {
             source_start: source_end - inner_end,
             source_end: source_end - inner_start,
-            gain: *gain,
         },
-    }
+    };
+    Region { kind, ..region.clone() }
 }
 
 #[cfg(test)]

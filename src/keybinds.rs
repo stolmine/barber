@@ -41,6 +41,9 @@ impl Default for Keybinds {
         b.insert("Stop".into(), k(false, false, false, "Escape"));
         b.insert("Reverse".into(), k(true, false, false, "R"));
         b.insert("Normalize".into(), k(true, true, false, "N"));
+        b.insert("RemoveDC".into(), k(true, true, false, "D"));
+        b.insert("SelectAll".into(), k(true, false, false, "A"));
+        b.insert("Quit".into(), k(true, false, false, "Q"));
         Self { bindings: b }
     }
 }
@@ -118,6 +121,10 @@ impl Keybinds {
                 "Stop" => Some(ToolbarAction::Stop),
                 "Reverse" if has_selection => Some(ToolbarAction::Reverse),
                 "Normalize" if has_file => Some(ToolbarAction::Normalize),
+                "RemoveDC" if has_file => Some(ToolbarAction::RemoveDC),
+                "ToggleFade" if has_file => Some(ToolbarAction::ToggleFade),
+                "SelectAll" if has_file => Some(ToolbarAction::SelectAll),
+                "Quit" => Some(ToolbarAction::Quit),
                 _ => None,
             };
             if action.is_some() { return action; }

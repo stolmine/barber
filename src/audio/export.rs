@@ -38,8 +38,8 @@ pub fn export_wav(
     for maybe_frame in edit_list.iter_source_frames(0, edit_list.total_frames()) {
         for ch in 0..buffer.channels as usize {
             let pcm = match maybe_frame {
-                Some((source_frame, gain)) => {
-                    let sample = buffer.samples[ch][source_frame] * gain;
+                Some((source_frame, gain, dc_offset)) => {
+                    let sample = (buffer.samples[ch][source_frame] - dc_offset) * gain;
                     (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
                 }
                 None => 0i16,

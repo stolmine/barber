@@ -26,6 +26,8 @@ pub struct BarberApp {
     loop_enabled: bool,
     follow_playhead: bool,
     was_playing: bool,
+    dirty: bool,
+    show_quit_dialog: bool,
 }
 
 impl Default for BarberApp {
@@ -44,12 +46,51 @@ impl Default for BarberApp {
             loop_enabled: false,
             follow_playhead: false,
             was_playing: false,
+            dirty: false,
+            show_quit_dialog: false,
         }
     }
 }
 
 impl eframe::App for BarberApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let quit_requested = ctx.input(|i| {
+            i.viewport().close_requested()
+                || i.events.iter().any(|e| matches!(e,
+                    egui::Event::Key { key: egui::Key::Q, pressed: true, modifiers, .. }
+                    if modifiers.command && !modifiers.shift && !modifiers.alt
+                ))
+        });
+
+        if quit_requested && !self.show_quit_dialog {
+            if self.dirty {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.show_quit_dialog = true;
+            } else {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+
+        if self.show_quit_dialog {
+            egui::Window::new("Unsaved Changes")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.label("You have unsaved changes. Quit anyway?");
+                    ui.horizontal(|ui| {
+                        if ui.button("Discard & Quit").clicked() {
+                            self.dirty = false;
+                            self.show_quit_dialog = false;
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.show_quit_dialog = false;
+                        }
+                    });
+                });
+        }
+
         let dropped = ctx.input(|i| i.raw.dropped_files.clone());
         if let Some(file) = dropped.first() {
             if let Some(path) = &file.path {
@@ -148,7 +189,15 @@ impl eframe::App for BarberApp {
         }
 
         if let Some(action) = action {
-            self.handle_action(action);
+            if action == ToolbarAction::Quit {
+                if self.dirty {
+                    self.show_quit_dialog = true;
+                } else {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            } else {
+                self.handle_action(action);
+            }
         }
     }
 }
@@ -239,6 +288,17 @@ impl BarberApp {
             }
             ToolbarAction::Reverse => self.reverse_selection(),
             ToolbarAction::Normalize => self.normalize(),
+            ToolbarAction::RemoveDC => self.remove_dc_offset(),
+            ToolbarAction::ToggleFade => self.toggle_fades(),
+            ToolbarAction::SelectAll => {
+                if let Some(el) = &self.edit_list {
+                    let total = el.total_frames();
+                    if total > 0 {
+                        self.waveform_state.selection = Some((0, total));
+                    }
+                }
+            }
+            ToolbarAction::Quit => {}
         }
     }
 
@@ -270,6 +330,7 @@ impl BarberApp {
                 self.file_path = Some(path);
                 self.waveform_state = WaveformState::default();
                 self.history.clear();
+                self.dirty = false;
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to decode: {}", e));
@@ -290,7 +351,7 @@ impl BarberApp {
         let Some(path) = file else { return };
 
         match export::export_wav(&path, buffer, edit_list) {
-            Ok(()) => {}
+            Ok(()) => { self.dirty = false; }
             Err(e) => {
                 self.error_message = Some(format!("Export failed: {}", e));
             }
@@ -411,6 +472,7 @@ impl BarberApp {
     }
 
     fn post_edit(&mut self, old_total: usize) {
+        self.dirty = true;
         if let Some(el) = &self.edit_list {
             let new_total = el.total_frames();
             if old_total > 0 && new_total > 0 {
@@ -432,6 +494,7 @@ impl BarberApp {
         if let Some(el) = &mut self.edit_list {
             el.reverse_selection(start, end);
         }
+        self.dirty = true;
         self.sync_playback_engine();
     }
 
@@ -451,7 +514,7 @@ impl BarberApp {
         let mut peak: f32 = 0.0;
         let mut frame_count: usize = 0;
         for maybe_frame in el.iter_source_frames(start, end - start) {
-            if let Some((sf, gain)) = maybe_frame {
+            if let Some((sf, gain, _dc_offset)) = maybe_frame {
                 for ch in 0..buffer.channels as usize {
                     let val = (buffer.samples[ch].get(sf).copied().unwrap_or(0.0) * gain).abs();
                     if val > peak { peak = val; }
@@ -465,11 +528,44 @@ impl BarberApp {
             if let Some(el) = &mut self.edit_list {
                 el.set_gain_range(start, end, gain_factor);
             }
+            self.dirty = true;
             self.sync_playback_engine();
             log::debug!("normalize: applied gain_factor={} to range {}..{}", gain_factor, start, end);
         } else {
             log::debug!("normalize: peak is 0, nothing to do");
         }
+    }
+
+    fn remove_dc_offset(&mut self) {
+        let (Some(buffer), Some(el)) = (&self.audio_buffer, &self.edit_list) else { return };
+        let selection = self.waveform_state.selection;
+        let (start, end) = selection.unwrap_or((0, el.total_frames()));
+        if start >= end { return; }
+        self.history.push(el.clone());
+        let mut sum: f64 = 0.0;
+        let mut count: u64 = 0;
+        for maybe_frame in el.iter_source_frames(start, end - start) {
+            if let Some((sf, _gain, _dc)) = maybe_frame {
+                for ch in 0..buffer.channels as usize {
+                    sum += buffer.samples[ch].get(sf).copied().unwrap_or(0.0) as f64;
+                    count += 1;
+                }
+            }
+        }
+        if count == 0 { return; }
+        let mean = (sum / count as f64) as f32;
+        if let Some(el) = &mut self.edit_list {
+            el.set_dc_offset_range(start, end, mean);
+        }
+        self.dirty = true;
+        self.sync_playback_engine();
+    }
+
+    fn toggle_fades(&mut self) {
+        if let Some(el) = &mut self.edit_list {
+            el.fades_enabled = !el.fades_enabled;
+        }
+        self.sync_playback_engine();
     }
 
     fn sync_playback_engine(&self) {

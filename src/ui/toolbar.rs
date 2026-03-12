@@ -22,6 +22,10 @@ pub enum ToolbarAction {
     ToggleFollow,
     Reverse,
     Normalize,
+    ToggleFade,
+    RemoveDC,
+    SelectAll,
+    Quit,
 }
 
 pub fn toolbar_ui(

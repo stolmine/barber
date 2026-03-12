@@ -169,11 +169,18 @@ Project Setup
 27. Waveform rendering resolves edit→source per pixel via `for_each_source_range` — correct display after all edits
 28. Cut/Copy/Paste hotkeys fixed — detect egui `Event::Cut/Copy/Paste` events alongside `key_pressed`
 
+## v0.1.5 Features (shipped)
+29. Region refactor — Region struct with kind enum, gain, dc_offset, fade_in/fade_out fields
+30. Boundary fades — auto-apply 128-frame (~3ms) fade in/out at edit splice points to prevent clicks
+31. Toggle fades — Edit > Toggle Fades to enable/disable boundary fade envelopes
+32. DC offset removal — Edit > Remove DC Offset (Cmd+Shift+D) centers waveform on zero
+33. Prompt to save on quit — dirty tracking with confirmation dialog on close/Cmd+Q
+34. Select all — Cmd+A or double-click waveform selects entire file
+35. Quit keybind — Cmd+Q with macOS native menu disabled to allow app-level intercept
+
 ## v0.2 Wishlist
 
 ### Editing
-- **Fade in/out on edit boundaries:** Crossfade to prevent clicks at cut points
-- **DC offset removal:** Center waveform on zero crossing
 - **Selection-scoped adjustments:** When a region is selected, apply pitch/speed, reverse, or amplitude changes to only that region (hotkeys or floating controls à la Adobe Audition)
 - **Individual L/R channel editing:** Edit left/right channels independently on stereo files. toggle-able
 - **Apply fades in or out, with selectable curves:** the question will be how to select curves
@@ -185,12 +192,12 @@ Project Setup
 - **Anti-aliased waveforms:** Smooth rendering instead of per-pixel lines
 
 ### Playback
+- **Play from selection start:** When a region is selected, pressing Play should begin playback from the start of the selection rather than the file start or last pause position
 - **Speed/pitch control:** Variable playback rate with optional pitch preservation
 - **Playback volume control:** Separate output gain from waveform amplitude
 
 ### Interaction
 - **Trackpad gestures:** Native pinch-to-zoom and two-finger scroll
-- **Prompt to save on quit:** Warning when quitting with unsaved modifications
 - **BPM detection and beat grid:** Adjustable beat grid for quantized edits with quantized selection on hotkey/toggle
 
 ### UI Polish (last priority)

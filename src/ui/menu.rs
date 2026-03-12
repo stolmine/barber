@@ -16,12 +16,15 @@ pub fn menu_bar_ui(
         ui.menu_button("File", |ui| {
             menu_item(ui, keybinds, "OpenFile", "Open...", true, &mut action);
             menu_item(ui, keybinds, "Export", "Export...", has_file, &mut action);
+            ui.separator();
+            menu_item(ui, keybinds, "Quit", "Quit", true, &mut action);
         });
 
         ui.menu_button("Edit", |ui| {
             menu_item(ui, keybinds, "Undo", "Undo", can_undo, &mut action);
             menu_item(ui, keybinds, "Redo", "Redo", can_redo, &mut action);
             ui.separator();
+            menu_item(ui, keybinds, "SelectAll", "Select All", has_file, &mut action);
             menu_item(ui, keybinds, "Cut", "Cut", has_selection, &mut action);
             menu_item(ui, keybinds, "Copy", "Copy", has_selection, &mut action);
             menu_item(ui, keybinds, "Paste", "Paste", has_clipboard, &mut action);
@@ -33,6 +36,8 @@ pub fn menu_bar_ui(
             ui.separator();
             menu_item(ui, keybinds, "Reverse", "Reverse", has_selection, &mut action);
             menu_item(ui, keybinds, "Normalize", "Normalize", has_file, &mut action);
+            menu_item(ui, keybinds, "RemoveDC", "Remove DC Offset", has_file, &mut action);
+            menu_item(ui, keybinds, "ToggleFade", "Toggle Fades", has_file, &mut action);
         });
 
         ui.menu_button("Transport", |ui| {
@@ -74,6 +79,10 @@ fn menu_item(
             "Crop" => Some(ToolbarAction::Crop),
             "Reverse" => Some(ToolbarAction::Reverse),
             "Normalize" => Some(ToolbarAction::Normalize),
+            "RemoveDC" => Some(ToolbarAction::RemoveDC),
+            "ToggleFade" => Some(ToolbarAction::ToggleFade),
+            "SelectAll" => Some(ToolbarAction::SelectAll),
+            "Quit" => Some(ToolbarAction::Quit),
             "PlaySelection" => Some(ToolbarAction::PlaySelection),
             "ZoomIn" => Some(ToolbarAction::ZoomIn),
             "ZoomOut" => Some(ToolbarAction::ZoomOut),

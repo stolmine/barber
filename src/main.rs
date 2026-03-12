@@ -12,6 +12,13 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 600.0])
             .with_title("Barber"),
+        event_loop_builder: Some(Box::new(|builder| {
+            #[cfg(target_os = "macos")]
+            {
+                use winit::platform::macos::EventLoopBuilderExtMacOS;
+                builder.with_default_menu(false);
+            }
+        })),
         ..Default::default()
     };
 
