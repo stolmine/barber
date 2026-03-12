@@ -77,10 +77,10 @@ impl EditList {
         })
     }
 
-    pub fn ripple_delete(&mut self, start: usize, end: usize) {
-        if start >= end {
-            return;
-        }
+    fn transform_regions<F>(&mut self, start: usize, end: usize, mut emit: F)
+    where
+        F: FnMut(&Region, usize, usize, usize, usize, &mut Vec<Region>),
+    {
         let mut new_regions: Vec<Region> = Vec::new();
         let mut offset = 0usize;
 
@@ -88,34 +88,40 @@ impl EditList {
             let rlen = region.len();
             let r_start = offset;
             let r_end = offset + rlen;
-
             let overlap_start = start.max(r_start);
             let overlap_end = end.min(r_end);
+            emit(region, overlap_start, overlap_end, r_start, r_end, &mut new_regions);
+            offset = r_end;
+        }
 
+        self.regions = new_regions;
+    }
+
+    pub fn ripple_delete(&mut self, start: usize, end: usize) {
+        if start >= end {
+            return;
+        }
+        self.transform_regions(start, end, |region, overlap_start, overlap_end, r_start, r_end, out| {
             if overlap_start < overlap_end {
                 if r_start < overlap_start {
-                    new_regions.push(Region {
+                    out.push(Region {
                         source_start: region.source_start,
                         source_end: region.source_start + (overlap_start - r_start),
                     });
                 }
                 if overlap_end < r_end {
-                    new_regions.push(Region {
+                    out.push(Region {
                         source_start: region.source_start + (overlap_end - r_start),
                         source_end: region.source_end,
                     });
                 }
             } else {
-                new_regions.push(Region {
+                out.push(Region {
                     source_start: region.source_start,
                     source_end: region.source_end,
                 });
             }
-
-            offset = r_end;
-        }
-
-        self.regions = new_regions;
+        });
     }
 
     pub fn crop(&mut self, start: usize, end: usize) {
@@ -123,28 +129,14 @@ impl EditList {
             self.regions.clear();
             return;
         }
-        let mut new_regions: Vec<Region> = Vec::new();
-        let mut offset = 0usize;
-
-        for region in &self.regions {
-            let rlen = region.len();
-            let r_start = offset;
-            let r_end = offset + rlen;
-
-            let keep_start = start.max(r_start);
-            let keep_end = end.min(r_end);
-
-            if keep_start < keep_end {
-                new_regions.push(Region {
-                    source_start: region.source_start + (keep_start - r_start),
-                    source_end: region.source_start + (keep_end - r_start),
+        self.transform_regions(start, end, |region, overlap_start, overlap_end, r_start, _r_end, out| {
+            if overlap_start < overlap_end {
+                out.push(Region {
+                    source_start: region.source_start + (overlap_start - r_start),
+                    source_end: region.source_start + (overlap_end - r_start),
                 });
             }
-
-            offset = r_end;
-        }
-
-        self.regions = new_regions;
+        });
     }
 }
 

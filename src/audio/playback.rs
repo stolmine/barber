@@ -65,9 +65,9 @@ impl PlaybackEngine {
                 ..
             } = args;
 
-            let mut guard = match callback_state.try_lock() {
-                Ok(g) => g,
-                Err(_) => {
+            let mut guard = match callback_state.try_lock().ok().filter(|g| g.playing) {
+                Some(g) => g,
+                None => {
                     for channel in data.channels_mut() {
                         for sample in channel.iter_mut() {
                             *sample = 0.0;
@@ -76,15 +76,6 @@ impl PlaybackEngine {
                     return Ok(());
                 }
             };
-
-            if !guard.playing {
-                for channel in data.channels_mut() {
-                    for sample in channel.iter_mut() {
-                        *sample = 0.0;
-                    }
-                }
-                return Ok(());
-            }
 
             let total = guard.edit_list.total_frames();
             let rate_ratio = source_sample_rate / device_sample_rate;

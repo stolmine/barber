@@ -27,12 +27,14 @@ pub fn toolbar_ui(
         i.key_pressed(Key::Backspace) || i.key_pressed(Key::Delete)
     });
 
+    let play_pause_action = if is_playing {
+        ToolbarAction::Pause
+    } else {
+        ToolbarAction::Play
+    };
+
     if space_pressed {
-        action = Some(if is_playing {
-            ToolbarAction::Pause
-        } else {
-            ToolbarAction::Play
-        });
+        action = Some(play_pause_action);
     }
 
     if delete_pressed && has_selection {
@@ -58,11 +60,7 @@ pub fn toolbar_ui(
             .add_enabled(has_file, egui::Button::new(play_pause_label))
             .clicked()
         {
-            action = Some(if is_playing {
-                ToolbarAction::Pause
-            } else {
-                ToolbarAction::Play
-            });
+            action = Some(play_pause_action);
         }
 
         if ui

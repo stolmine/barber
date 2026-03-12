@@ -2,6 +2,7 @@ use std::fmt;
 use std::path::Path;
 
 use symphonia::core::audio::{AudioBufferRef, Signal};
+use symphonia::core::sample::Sample;
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::FormatOptions;
@@ -126,93 +127,29 @@ pub fn decode_file(path: &Path) -> Result<AudioBuffer, DecodeError> {
     })
 }
 
+fn extend_channels<S: Sample>(
+    buf: &symphonia::core::audio::AudioBuffer<S>,
+    channel_samples: &mut [Vec<f32>],
+    convert: impl Fn(&S) -> f32,
+) {
+    for (ch, dst) in channel_samples.iter_mut().enumerate() {
+        if ch < buf.spec().channels.count() {
+            dst.extend(buf.chan(ch).iter().map(&convert));
+        }
+    }
+}
+
 fn append_samples(decoded: &AudioBufferRef<'_>, channel_samples: &mut Vec<Vec<f32>>) {
     match decoded {
-        AudioBufferRef::F32(buf) => {
-            for (ch, dst) in channel_samples.iter_mut().enumerate() {
-                if ch < buf.spec().channels.count() {
-                    dst.extend_from_slice(buf.chan(ch));
-                }
-            }
-        }
-        AudioBufferRef::F64(buf) => {
-            for (ch, dst) in channel_samples.iter_mut().enumerate() {
-                if ch < buf.spec().channels.count() {
-                    dst.extend(buf.chan(ch).iter().map(|&s| s as f32));
-                }
-            }
-        }
-        AudioBufferRef::S32(buf) => {
-            for (ch, dst) in channel_samples.iter_mut().enumerate() {
-                if ch < buf.spec().channels.count() {
-                    dst.extend(buf.chan(ch).iter().map(|&s| s as f32 / i32::MAX as f32));
-                }
-            }
-        }
-        AudioBufferRef::S24(buf) => {
-            for (ch, dst) in channel_samples.iter_mut().enumerate() {
-                if ch < buf.spec().channels.count() {
-                    dst.extend(buf.chan(ch).iter().map(|&s| s.inner() as f32 / 8_388_607.0));
-                }
-            }
-        }
-        AudioBufferRef::S16(buf) => {
-            for (ch, dst) in channel_samples.iter_mut().enumerate() {
-                if ch < buf.spec().channels.count() {
-                    dst.extend(buf.chan(ch).iter().map(|&s| s as f32 / i16::MAX as f32));
-                }
-            }
-        }
-        AudioBufferRef::S8(buf) => {
-            for (ch, dst) in channel_samples.iter_mut().enumerate() {
-                if ch < buf.spec().channels.count() {
-                    dst.extend(buf.chan(ch).iter().map(|&s| s as f32 / i8::MAX as f32));
-                }
-            }
-        }
-        AudioBufferRef::U32(buf) => {
-            for (ch, dst) in channel_samples.iter_mut().enumerate() {
-                if ch < buf.spec().channels.count() {
-                    dst.extend(
-                        buf.chan(ch)
-                            .iter()
-                            .map(|&s| (s as f32 / u32::MAX as f32) * 2.0 - 1.0),
-                    );
-                }
-            }
-        }
-        AudioBufferRef::U24(buf) => {
-            for (ch, dst) in channel_samples.iter_mut().enumerate() {
-                if ch < buf.spec().channels.count() {
-                    dst.extend(
-                        buf.chan(ch)
-                            .iter()
-                            .map(|&s| (s.inner() as f32 / 16_777_215.0) * 2.0 - 1.0),
-                    );
-                }
-            }
-        }
-        AudioBufferRef::U16(buf) => {
-            for (ch, dst) in channel_samples.iter_mut().enumerate() {
-                if ch < buf.spec().channels.count() {
-                    dst.extend(
-                        buf.chan(ch)
-                            .iter()
-                            .map(|&s| (s as f32 / u16::MAX as f32) * 2.0 - 1.0),
-                    );
-                }
-            }
-        }
-        AudioBufferRef::U8(buf) => {
-            for (ch, dst) in channel_samples.iter_mut().enumerate() {
-                if ch < buf.spec().channels.count() {
-                    dst.extend(
-                        buf.chan(ch)
-                            .iter()
-                            .map(|&s| (s as f32 / u8::MAX as f32) * 2.0 - 1.0),
-                    );
-                }
-            }
-        }
+        AudioBufferRef::F32(buf) => extend_channels(buf, channel_samples, |&s| s),
+        AudioBufferRef::F64(buf) => extend_channels(buf, channel_samples, |&s| s as f32),
+        AudioBufferRef::S32(buf) => extend_channels(buf, channel_samples, |&s| s as f32 / i32::MAX as f32),
+        AudioBufferRef::S24(buf) => extend_channels(buf, channel_samples, |&s| s.inner() as f32 / 8_388_607.0),
+        AudioBufferRef::S16(buf) => extend_channels(buf, channel_samples, |&s| s as f32 / i16::MAX as f32),
+        AudioBufferRef::S8(buf)  => extend_channels(buf, channel_samples, |&s| s as f32 / i8::MAX as f32),
+        AudioBufferRef::U32(buf) => extend_channels(buf, channel_samples, |&s| (s as f32 / u32::MAX as f32) * 2.0 - 1.0),
+        AudioBufferRef::U24(buf) => extend_channels(buf, channel_samples, |&s| (s.inner() as f32 / 16_777_215.0) * 2.0 - 1.0),
+        AudioBufferRef::U16(buf) => extend_channels(buf, channel_samples, |&s| (s as f32 / u16::MAX as f32) * 2.0 - 1.0),
+        AudioBufferRef::U8(buf)  => extend_channels(buf, channel_samples, |&s| (s as f32 / u8::MAX as f32) * 2.0 - 1.0),
     }
 }

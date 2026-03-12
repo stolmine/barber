@@ -200,9 +200,7 @@ impl BarberApp {
             } else if self.waveform_state.playhead > start {
                 self.waveform_state.playhead = start;
             }
-            if let Some(engine) = &self.playback_engine {
-                engine.set_edit_list(el.clone());
-            }
+            self.sync_playback_engine();
         }
     }
 
@@ -213,9 +211,13 @@ impl BarberApp {
             self.waveform_state.selection = None;
             self.waveform_state.playhead = 0;
             self.waveform_state.scroll_offset = 0.0;
-            if let Some(engine) = &self.playback_engine {
-                engine.set_edit_list(el.clone());
-            }
+            self.sync_playback_engine();
+        }
+    }
+
+    fn sync_playback_engine(&self) {
+        if let (Some(engine), Some(el)) = (&self.playback_engine, &self.edit_list) {
+            engine.set_edit_list(el.clone());
         }
     }
 }
