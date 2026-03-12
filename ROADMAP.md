@@ -164,10 +164,12 @@ Project Setup
 - **Trackpad gestures:** Native pinch-to-zoom and two-finger scroll
 - **Right-click context menu:** Selection-aware actions (cut, copy, paste, delete, crop, export selection)
 - **Prompt to save modified file on quit:** warning when user attempts to quit with modified file in buffer
+- **Automatic loop when hitting play at EOF:** when user hits play and playhead is already at EOF, automatically start playback from BOF
 
 ### UI Polish (last priority)
 - **Sexier UI:** Better colors, typography, spacing, custom styling
 - **Tabbed Concurrent Projects:** open multiple files at once, freely splice material between them, etc
+- **Anti-aliased waveforms:** they are choppy right now
 
 ### Infrastructure
 - Async file loading with progress bar

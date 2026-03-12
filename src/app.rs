@@ -149,7 +149,6 @@ impl BarberApp {
                 let buffer = Arc::new(buffer);
                 let peaks = PeakData::compute(&buffer);
                 let edit_list = EditList::from_length(buffer.num_frames);
-                let total = edit_list.total_frames();
 
                 let engine = PlaybackEngine::new(Arc::clone(&buffer), edit_list.clone());
                 match engine {
@@ -162,7 +161,6 @@ impl BarberApp {
                 self.edit_list = Some(edit_list);
                 self.file_path = Some(path);
                 self.waveform_state = WaveformState::default();
-                self.waveform_state.zoom_to_fit(total, self.waveform_state.last_width);
             }
             Err(e) => {
                 self.error_message = Some(format!("Failed to decode: {}", e));

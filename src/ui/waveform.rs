@@ -9,6 +9,7 @@ pub struct WaveformState {
     pub selection: Option<(usize, usize)>,
     pub playhead: usize,
     pub last_width: f32,
+    pub needs_fit: bool,
     drag_start: Option<usize>,
 }
 
@@ -19,7 +20,8 @@ impl Default for WaveformState {
             zoom: 1.0,
             selection: None,
             playhead: 0,
-            last_width: 1200.0,
+            last_width: 0.0,
+            needs_fit: true,
             drag_start: None,
         }
     }
@@ -77,6 +79,11 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
 
         self.state.last_width = width;
 
+        if self.state.needs_fit && total_frames > 0 && width > 0.0 {
+            self.state.zoom_to_fit(total_frames, width);
+            self.state.needs_fit = false;
+        }
+
         handle_input(ui, &response, rect, self.state, total_frames);
 
         painter.rect_filled(rect, 0.0, Color32::from_rgb(20, 20, 24));
@@ -91,7 +98,11 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
         let start_frame = self.state.scroll_offset.max(0.0) as usize;
         let end_frame = (self.state.scroll_offset + width as f64 * self.state.zoom) as usize;
         let end_frame = end_frame.min(total_frames);
-        let num_pixels = width as usize;
+        let num_pixels = if self.state.zoom > 0.0 {
+            (((end_frame - start_frame) as f64 / self.state.zoom) as usize).min(width as usize)
+        } else {
+            width as usize
+        };
 
         for ch in 0..num_channels {
             let ch_top = rect.top() + ch as f32 * channel_height;
