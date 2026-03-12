@@ -35,6 +35,11 @@ A simple, fast, lightweight audio editor built from purely open source Rust comp
 17. Follow playhead — auto-scroll viewport to keep playhead visible (F key)
 18. Right-click context menu — selection-aware edit actions on waveform
 
+## v0.1.3 Features (shipped)
+19. Snap-to-zero-crossing — selection edges auto-snap to nearest zero crossing on release
+20. Duplicate region — Cmd+D copies selected region and inserts immediately after
+21. Phantom playhead — ghost marker at play-start position with adaptive contrast over waveform
+
 ## Architecture
 
 ### Module Map
@@ -43,18 +48,19 @@ A simple, fast, lightweight audio editor built from purely open source Rust comp
 |------|-------|---------|
 | `Cargo.toml` | ~25 | Dependencies |
 | `src/main.rs` | ~20 | Entry point, eframe launch |
-| `src/app.rs` | ~395 | Main `BarberApp` struct, orchestration |
+| `src/app.rs` | ~415 | Main `BarberApp` struct, orchestration |
 | `src/edit.rs` | ~280 | Edit list data structure (regions, all edit ops) |
 | `src/edit_tests.rs` | ~210 | Edit list unit tests |
 | `src/history.rs` | ~45 | Undo/redo history stack |
-| `src/audio/mod.rs` | ~10 | Module re-exports |
+| `src/audio/mod.rs` | ~5 | Module re-exports |
+| `src/audio/zero_crossing.rs` | ~25 | Zero-crossing detection for selection snapping |
 | `src/audio/decode.rs` | ~120 | Symphonia-based PCM decoding |
 | `src/audio/playback.rs` | ~210 | CoreAudio playback engine |
 | `src/audio/export.rs` | ~50 | WAV export via hound |
 | `src/audio/peaks.rs` | ~100 | Peak/RMS mipmap computation with rayon |
 | `src/ui/mod.rs` | ~5 | Module re-exports |
-| `src/ui/waveform.rs` | ~385 | Custom egui waveform widget with ruler |
-| `src/ui/toolbar.rs` | ~220 | Toolbar with transport/zoom/edit controls |
+| `src/ui/waveform.rs` | ~445 | Custom egui waveform widget with ruler |
+| `src/ui/toolbar.rs` | ~230 | Toolbar with transport/zoom/edit controls |
 
 ### Core Data Types
 
@@ -157,7 +163,6 @@ Project Setup
 ## v0.2 Wishlist
 
 ### Editing
-- **Duplicate region:** Copy selected region and insert it adjacent
 - **Reverse selection:** Reverse sample order within selected region
 - **Silence selection:** Replace selection with silence (zero samples)
 - **Fade in/out on edit boundaries:** Crossfade to prevent clicks at cut points
@@ -171,10 +176,8 @@ Project Setup
 - **Vertical zoom:** Scale waveform amplitude independently of window height
 - **Amplitude control:** Gain adjustment with live waveform preview
 - **Anti-aliased waveforms:** Smooth rendering instead of per-pixel lines
-- **Snap-to-zero-crossing:** Selection edges snap to nearest zero crossing for click-free edits
 
 ### Playback
-- **Phantom playhead:** Ghost marker at play-start position while actual playhead advances
 - **Speed/pitch control:** Variable playback rate with optional pitch preservation
 - **Playback volume control:** Separate output gain from waveform amplitude
 
