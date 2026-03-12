@@ -192,7 +192,7 @@ Project Setup
 - **Anti-aliased waveforms:** Smooth rendering instead of per-pixel lines
 
 ### Playback
-- **Play from selection start:** When a region is selected, pressing Play should begin playback from the start of the selection rather than the file start or last pause position
+- **In/out points:** Set in/out markers at playhead position with Shift+I / Shift+O. Jump to in/out point with I / O. Default to file start/end on load. Constrain playback and export to in/out range
 - **Speed/pitch control:** Variable playback rate with optional pitch preservation
 - **Playback volume control:** Separate output gain from waveform amplitude
 
@@ -205,7 +205,6 @@ Project Setup
 - **Tabbed concurrent projects:** Open multiple files, splice material between them
 - **Metering:** just simple stereo metering with themable colors, could be cute with an ascii option borrowed from monokit
 - **Minimap:** adaptive overview of waveform when zoomed
-- **Previous action on status bar:** like micro has, the user's previous action should always read out on the status bar, with timespans affected if possible
 - **Keystroke tracking on status bar:** i am thinking we might gor for vim style chained keybinds for some actions, it would be useful to detect when modifiers are hit and display held and eventually input key combos
 
 ### Infrastructure

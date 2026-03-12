@@ -154,7 +154,7 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
                 ui.close_menu();
             }
             ui.separator();
-            if ui.add_enabled(has_sel, egui::Button::new("Reverse")).clicked() {
+            if ui.add_enabled(true, egui::Button::new("Reverse")).clicked() {
                 *self.action = Some(ToolbarAction::Reverse);
                 ui.close_menu();
             }

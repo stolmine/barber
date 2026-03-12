@@ -28,6 +28,12 @@ pub enum ToolbarAction {
     Quit,
 }
 
+impl ToolbarAction {
+    pub fn falls_back_to_full_file(&self) -> bool {
+        matches!(self, Self::Reverse | Self::Normalize | Self::RemoveDC)
+    }
+}
+
 pub fn toolbar_ui(
     ui: &mut egui::Ui,
     is_playing: bool,

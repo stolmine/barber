@@ -23,6 +23,7 @@ pub struct BarberApp {
     history: EditHistory,
     clipboard: Option<Vec<Region>>,
     keybinds: Keybinds,
+    last_action: Option<String>,
     loop_enabled: bool,
     follow_playhead: bool,
     was_playing: bool,
@@ -43,6 +44,7 @@ impl Default for BarberApp {
             history: EditHistory::new(),
             clipboard: None,
             keybinds: Keybinds::load(),
+            last_action: None,
             loop_enabled: false,
             follow_playhead: false,
             was_playing: false,
@@ -168,6 +170,11 @@ impl eframe::App for BarberApp {
                 if let Some(err) = &self.error_message {
                     ui.colored_label(egui::Color32::RED, err);
                 }
+                if let Some(action_name) = &self.last_action {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(action_name.as_str());
+                    });
+                }
             });
         });
 
@@ -205,6 +212,20 @@ impl eframe::App for BarberApp {
 impl BarberApp {
     fn handle_action(&mut self, action: ToolbarAction) {
         self.error_message = None;
+        if let Some(label) = action_label(&action) {
+            let sr = self.audio_buffer.as_ref().map(|b| b.sample_rate as f64);
+            let range = self.waveform_state.selection.or_else(|| {
+                if action.falls_back_to_full_file() {
+                    self.edit_list.as_ref().map(|el| (0, el.total_frames()))
+                } else {
+                    None
+                }
+            });
+            self.last_action = Some(match (range, sr) {
+                (Some((s, e)), Some(sr)) => format!("{} ({:.2}s - {:.2}s)", label, s as f64 / sr, e as f64 / sr),
+                _ => label.to_string(),
+            });
+        }
 
         match action {
             ToolbarAction::OpenFile => self.open_file(),
@@ -212,16 +233,11 @@ impl BarberApp {
             ToolbarAction::Play => {
                 if let (Some(engine), Some(el)) = (&self.playback_engine, &self.edit_list) {
                     let total = el.total_frames();
-                    let engine_pos = engine.position();
-                    log::debug!(
-                        "Play pressed: playhead={}, engine_pos={}, total_frames={}, is_playing={}",
-                        self.waveform_state.playhead, engine_pos, total, engine.is_playing()
-                    );
-                    if self.waveform_state.playhead >= total && total > 0 {
-                        log::debug!("Playhead at EOF, resetting to 0");
-                        self.waveform_state.playhead = 0;
-                    }
-                    engine.seek(self.waveform_state.playhead);
+                    let play_from = self.waveform_state.selection
+                        .map(|(s, _)| s)
+                        .unwrap_or(self.waveform_state.playhead);
+                    let play_from = if play_from >= total && total > 0 { 0 } else { play_from };
+                    engine.seek(play_from);
                     engine.set_stop_at(None);
                     if self.loop_enabled {
                         let (start, end) = self.waveform_state.selection
@@ -229,7 +245,7 @@ impl BarberApp {
                             .unwrap_or((0, None));
                         engine.set_loop(self.loop_enabled, start, end);
                     }
-                    self.waveform_state.phantom_playhead = Some(self.waveform_state.playhead);
+                    self.waveform_state.phantom_playhead = Some(play_from);
                     engine.play();
                 }
             }
@@ -330,6 +346,7 @@ impl BarberApp {
                 self.file_path = Some(path);
                 self.waveform_state = WaveformState::default();
                 self.history.clear();
+                self.last_action = None;
                 self.dirty = false;
             }
             Err(e) => {
@@ -487,10 +504,10 @@ impl BarberApp {
     }
 
     fn reverse_selection(&mut self) {
-        let Some((start, end)) = self.waveform_state.selection else { return };
-        if let Some(el) = &self.edit_list {
-            self.history.push(el.clone());
-        }
+        let Some(el) = &self.edit_list else { return };
+        let (start, end) = self.waveform_state.selection.unwrap_or((0, el.total_frames()));
+        if start >= end { return; }
+        self.history.push(el.clone());
         if let Some(el) = &mut self.edit_list {
             el.reverse_selection(start, end);
         }
@@ -572,5 +589,25 @@ impl BarberApp {
         if let (Some(engine), Some(el)) = (&self.playback_engine, &self.edit_list) {
             engine.set_edit_list(el.clone());
         }
+    }
+}
+
+fn action_label(action: &ToolbarAction) -> Option<&'static str> {
+    match action {
+        ToolbarAction::GapDelete => Some("Gap Delete"),
+        ToolbarAction::RippleDelete => Some("Ripple Delete"),
+        ToolbarAction::Crop => Some("Crop"),
+        ToolbarAction::Cut => Some("Cut"),
+        ToolbarAction::Copy => Some("Copy"),
+        ToolbarAction::Paste => Some("Paste"),
+        ToolbarAction::Duplicate => Some("Duplicate"),
+        ToolbarAction::Undo => Some("Undo"),
+        ToolbarAction::Redo => Some("Redo"),
+        ToolbarAction::Reverse => Some("Reverse"),
+        ToolbarAction::Normalize => Some("Normalize"),
+        ToolbarAction::RemoveDC => Some("Remove DC"),
+        ToolbarAction::SelectAll => Some("Select All"),
+        ToolbarAction::Export => Some("Exported"),
+        _ => None,
     }
 }

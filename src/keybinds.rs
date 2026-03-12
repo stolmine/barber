@@ -119,7 +119,7 @@ impl Keybinds {
                 "OpenFile" => Some(ToolbarAction::OpenFile),
                 "Export" if has_file => Some(ToolbarAction::Export),
                 "Stop" => Some(ToolbarAction::Stop),
-                "Reverse" if has_selection => Some(ToolbarAction::Reverse),
+                "Reverse" if has_file => Some(ToolbarAction::Reverse),
                 "Normalize" if has_file => Some(ToolbarAction::Normalize),
                 "RemoveDC" if has_file => Some(ToolbarAction::RemoveDC),
                 "ToggleFade" if has_file => Some(ToolbarAction::ToggleFade),

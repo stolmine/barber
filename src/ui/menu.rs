@@ -34,7 +34,7 @@ pub fn menu_bar_ui(
             menu_item(ui, keybinds, "RippleDelete", "Ripple Delete", has_selection, &mut action);
             menu_item(ui, keybinds, "Crop", "Crop", has_selection, &mut action);
             ui.separator();
-            menu_item(ui, keybinds, "Reverse", "Reverse", has_selection, &mut action);
+            menu_item(ui, keybinds, "Reverse", "Reverse", has_file, &mut action);
             menu_item(ui, keybinds, "Normalize", "Normalize", has_file, &mut action);
             menu_item(ui, keybinds, "RemoveDC", "Remove DC Offset", has_file, &mut action);
             menu_item(ui, keybinds, "ToggleFade", "Toggle Fades", has_file, &mut action);
