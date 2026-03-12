@@ -29,6 +29,12 @@ A simple, fast, lightweight audio editor built from purely open source Rust comp
 13. Context-aware zoom-to-fit (selection or all)
 14. 0dB normalized waveforms with visual clipping
 
+## v0.1.2 Features (shipped)
+15. Loop playback — toggle loop mode; loops selection or full file (L key)
+16. Play selection — Shift+Space auditions selected region only
+17. Follow playhead — auto-scroll viewport to keep playhead visible (F key)
+18. Right-click context menu — selection-aware edit actions on waveform
+
 ## Architecture
 
 ### Module Map
@@ -37,18 +43,18 @@ A simple, fast, lightweight audio editor built from purely open source Rust comp
 |------|-------|---------|
 | `Cargo.toml` | ~25 | Dependencies |
 | `src/main.rs` | ~20 | Entry point, eframe launch |
-| `src/app.rs` | ~340 | Main `BarberApp` struct, orchestration |
+| `src/app.rs` | ~395 | Main `BarberApp` struct, orchestration |
 | `src/edit.rs` | ~280 | Edit list data structure (regions, all edit ops) |
 | `src/edit_tests.rs` | ~210 | Edit list unit tests |
 | `src/history.rs` | ~45 | Undo/redo history stack |
 | `src/audio/mod.rs` | ~10 | Module re-exports |
 | `src/audio/decode.rs` | ~120 | Symphonia-based PCM decoding |
-| `src/audio/playback.rs` | ~180 | CoreAudio playback engine |
+| `src/audio/playback.rs` | ~210 | CoreAudio playback engine |
 | `src/audio/export.rs` | ~50 | WAV export via hound |
 | `src/audio/peaks.rs` | ~100 | Peak/RMS mipmap computation with rayon |
 | `src/ui/mod.rs` | ~5 | Module re-exports |
-| `src/ui/waveform.rs` | ~320 | Custom egui waveform widget with ruler |
-| `src/ui/toolbar.rs` | ~190 | Toolbar with transport/zoom/edit controls |
+| `src/ui/waveform.rs` | ~385 | Custom egui waveform widget with ruler |
+| `src/ui/toolbar.rs` | ~220 | Toolbar with transport/zoom/edit controls |
 
 ### Core Data Types
 
@@ -167,15 +173,11 @@ Project Setup
 
 ### Playback
 - **Phantom playhead:** Ghost marker at play-start position while actual playhead advances
-- **Follow playhead toggle:** Auto-scroll viewport to keep playhead centered at current zoom
-- **Loop playback:** Loop selected region or entire file
-- **Play selection only:** Audition just the selected region
 - **Speed/pitch control:** Variable playback rate with optional pitch preservation
 
 ### Interaction
 - **Full hotkey coverage:** Keyboard shortcuts for all operations
 - **Trackpad gestures:** Native pinch-to-zoom and two-finger scroll
-- **Right-click context menu:** Selection-aware actions (cut, copy, paste, delete, crop, export selection)
 - **Prompt to save on quit:** Warning when quitting with unsaved modifications
 - **Menu bar:** Standard macOS menu bar for accessibility and discoverability
 
@@ -194,3 +196,17 @@ Project Setup
 - Sample rate conversion on export
 - Recent files list
 - Optimization - improve load times and snappiness as much as possible. File picker in particular is opening incredibly slowly right now
+
+new feature ideas not yet categorized:
+
+when a region is selected adjustments to the following should affect only it(once these features are actually built):
+- pitch/speed
+- reverse
+- amplitude
+this could be accomplished with hotkeys or floating controls a la adobe audition
+
+optional bpm detection and adjustable beat grid for quantized edits (w/ quantized selection available on hotkey/toggle)
+
+playback volume control vs actual amplitude
+
+individual editing of L/R channels on stereo files
