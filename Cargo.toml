@@ -1,0 +1,16 @@
+[package]
+name = "barber"
+version = "0.1.0"
+edition = "2021"
+description = "A simple, fast, lightweight audio editor"
+
+[dependencies]
+eframe = "0.31"
+egui = "0.31"
+symphonia = { version = "0.5", features = ["mp3", "flac", "isomp4", "aiff", "wav", "pcm", "aac"] }
+coreaudio-rs = { version = "0.13", features = ["audio_unit", "audio_toolbox"] }
+hound = "3.5"
+rayon = "1.10"
+rfd = "0.15"
+log = "0.4"
+env_logger = "0.11"
