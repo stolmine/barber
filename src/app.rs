@@ -56,6 +56,15 @@ impl eframe::App for BarberApp {
                 self.waveform_state.playhead = engine.position();
             }
             ctx.request_repaint();
+        } else if let Some(engine) = &self.playback_engine {
+            let engine_pos = engine.position();
+            if engine_pos != self.waveform_state.playhead {
+                log::debug!(
+                    "Playback stopped: syncing playhead {} -> engine_pos {}",
+                    self.waveform_state.playhead, engine_pos
+                );
+                self.waveform_state.playhead = engine_pos;
+            }
         }
 
         let mut action = None;
@@ -126,7 +135,14 @@ impl BarberApp {
             ToolbarAction::Export => self.export_file(),
             ToolbarAction::Play => {
                 if let (Some(engine), Some(el)) = (&self.playback_engine, &self.edit_list) {
-                    if self.waveform_state.playhead >= el.total_frames() && el.total_frames() > 0 {
+                    let total = el.total_frames();
+                    let engine_pos = engine.position();
+                    log::debug!(
+                        "Play pressed: playhead={}, engine_pos={}, total_frames={}, is_playing={}",
+                        self.waveform_state.playhead, engine_pos, total, engine.is_playing()
+                    );
+                    if self.waveform_state.playhead >= total && total > 0 {
+                        log::debug!("Playhead at EOF, resetting to 0");
                         self.waveform_state.playhead = 0;
                     }
                     engine.seek(self.waveform_state.playhead);

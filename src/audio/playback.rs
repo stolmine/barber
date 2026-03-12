@@ -29,6 +29,7 @@ impl From<coreaudio::Error> for PlaybackError {
 pub struct PlaybackState {
     pub playing: bool,
     pub position: usize,
+    pub position_frac: f64,
     pub edit_list: EditList,
     pub buffer: Arc<AudioBuffer>,
 }
@@ -43,6 +44,7 @@ impl PlaybackEngine {
         let state = Arc::new(Mutex::new(PlaybackState {
             playing: false,
             position: 0,
+            position_frac: 0.0,
             edit_list,
             buffer: buffer.clone(),
         }));
@@ -109,12 +111,10 @@ impl PlaybackEngine {
                     }
                 }
 
-                // Advance position, accounting for sample rate difference
-                if rate_ratio <= 1.0 {
-                    guard.position += 1;
-                } else {
-                    guard.position += rate_ratio as usize;
-                }
+                guard.position_frac += rate_ratio;
+                let advance = guard.position_frac as usize;
+                guard.position += advance;
+                guard.position_frac -= advance as f64;
             }
 
             Ok(())
@@ -153,6 +153,7 @@ impl PlaybackEngine {
     pub fn seek(&self, frame: usize) {
         if let Ok(mut s) = self.state.lock() {
             s.position = frame;
+            s.position_frac = 0.0;
         }
     }
 
