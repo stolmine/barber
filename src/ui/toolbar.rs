@@ -18,6 +18,9 @@ pub enum ToolbarAction {
     Paste,
     Undo,
     Redo,
+    PlaySelection,
+    ToggleLoop,
+    ToggleFollow,
 }
 
 pub fn toolbar_ui(
@@ -28,10 +31,15 @@ pub fn toolbar_ui(
     can_undo: bool,
     can_redo: bool,
     has_clipboard: bool,
+    is_loop: bool,
+    is_following: bool,
 ) -> Option<ToolbarAction> {
     let mut action = None;
 
-    let space_pressed = ui.input(|i| i.key_pressed(Key::Space));
+    let shift_space_pressed = ui.input(|i| i.modifiers.shift && i.key_pressed(Key::Space));
+    let space_pressed = ui.input(|i| !i.modifiers.shift && i.key_pressed(Key::Space));
+    let loop_pressed = ui.input(|i| !i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::L));
+    let follow_pressed = ui.input(|i| !i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::F));
     let gap_delete_pressed = ui.input(|i| {
         let no_shift = !i.modifiers.shift;
         no_shift && (i.key_pressed(Key::Backspace) || i.key_pressed(Key::Delete))
@@ -52,8 +60,19 @@ pub fn toolbar_ui(
         ToolbarAction::Play
     };
 
+    if shift_space_pressed && has_selection {
+        action = Some(ToolbarAction::PlaySelection);
+    }
+
     if space_pressed {
         action = Some(play_pause_action);
+    }
+
+    if loop_pressed {
+        action = Some(ToolbarAction::ToggleLoop);
+    }
+    if follow_pressed {
+        action = Some(ToolbarAction::ToggleFollow);
     }
 
     if gap_delete_pressed && has_selection {
@@ -111,6 +130,13 @@ pub fn toolbar_ui(
             .clicked()
         {
             action = Some(ToolbarAction::Stop);
+        }
+
+        if ui.add_enabled(has_file, egui::SelectableLabel::new(is_loop, "Loop")).clicked() {
+            action = Some(ToolbarAction::ToggleLoop);
+        }
+        if ui.add_enabled(has_file, egui::SelectableLabel::new(is_following, "Follow")).clicked() {
+            action = Some(ToolbarAction::ToggleFollow);
         }
 
         ui.separator();

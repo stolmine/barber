@@ -20,6 +20,9 @@ pub struct BarberApp {
     error_message: Option<String>,
     history: EditHistory,
     clipboard: Option<Vec<Region>>,
+    loop_enabled: bool,
+    follow_playhead: bool,
+    was_playing: bool,
 }
 
 impl Default for BarberApp {
@@ -34,6 +37,9 @@ impl Default for BarberApp {
             error_message: None,
             history: EditHistory::new(),
             clipboard: None,
+            loop_enabled: false,
+            follow_playhead: false,
+            was_playing: false,
         }
     }
 }
@@ -54,18 +60,22 @@ impl eframe::App for BarberApp {
         if is_playing {
             if let Some(engine) = &self.playback_engine {
                 self.waveform_state.playhead = engine.position();
+                if self.follow_playhead {
+                    self.waveform_state.ensure_visible(self.waveform_state.playhead);
+                }
             }
             ctx.request_repaint();
-        } else if let Some(engine) = &self.playback_engine {
-            let engine_pos = engine.position();
-            if engine_pos != self.waveform_state.playhead {
+        } else if self.was_playing {
+            if let Some(engine) = &self.playback_engine {
+                let engine_pos = engine.position();
                 log::debug!(
-                    "Playback stopped: syncing playhead {} -> engine_pos {}",
+                    "Playback just stopped: syncing playhead {} -> engine_pos {}",
                     self.waveform_state.playhead, engine_pos
                 );
                 self.waveform_state.playhead = engine_pos;
             }
         }
+        self.was_playing = is_playing;
 
         let mut action = None;
 
@@ -73,7 +83,7 @@ impl eframe::App for BarberApp {
             let can_undo = self.history.can_undo();
             let can_redo = self.history.can_redo();
             let has_clipboard = self.clipboard.is_some();
-            action = toolbar_ui(ui, is_playing, has_selection, has_file, can_undo, can_redo, has_clipboard);
+            action = toolbar_ui(ui, is_playing, has_selection, has_file, can_undo, can_redo, has_clipboard, self.loop_enabled, self.follow_playhead);
         });
 
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
@@ -111,7 +121,7 @@ impl eframe::App for BarberApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             if let (Some(peaks), Some(edit_list)) = (&self.peak_data, &self.edit_list) {
                 let sample_rate = self.audio_buffer.as_ref().map_or(44100, |b| b.sample_rate);
-                let widget = WaveformWidget::new(peaks, edit_list, &mut self.waveform_state, sample_rate);
+                let widget = WaveformWidget::new(peaks, edit_list, &mut self.waveform_state, sample_rate, &mut action, self.clipboard.is_some());
                 ui.add(widget);
             } else {
                 ui.centered_and_justified(|ui| {
@@ -146,6 +156,13 @@ impl BarberApp {
                         self.waveform_state.playhead = 0;
                     }
                     engine.seek(self.waveform_state.playhead);
+                    engine.set_stop_at(None);
+                    if self.loop_enabled {
+                        let (start, end) = self.waveform_state.selection
+                            .map(|(s, e)| (s, Some(e)))
+                            .unwrap_or((0, None));
+                        engine.set_loop(self.loop_enabled, start, end);
+                    }
                     engine.play();
                 }
             }
@@ -180,6 +197,25 @@ impl BarberApp {
             ToolbarAction::Paste => self.paste(),
             ToolbarAction::Undo => self.undo(),
             ToolbarAction::Redo => self.redo(),
+            ToolbarAction::ToggleLoop => {
+                self.loop_enabled = !self.loop_enabled;
+                if let Some(engine) = &self.playback_engine {
+                    let (start, end) = self.waveform_state.selection
+                        .map(|(s, e)| (s, Some(e)))
+                        .unwrap_or((0, None));
+                    engine.set_loop(self.loop_enabled, start, end);
+                }
+            }
+            ToolbarAction::ToggleFollow => {
+                self.follow_playhead = !self.follow_playhead;
+            }
+            ToolbarAction::PlaySelection => {
+                if let (Some(engine), Some((start, end))) = (&self.playback_engine, self.waveform_state.selection) {
+                    engine.set_stop_at(Some(end));
+                    engine.seek(start);
+                    engine.play();
+                }
+            }
         }
     }
 

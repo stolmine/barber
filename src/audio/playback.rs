@@ -32,6 +32,10 @@ pub struct PlaybackState {
     pub position_frac: f64,
     pub edit_list: EditList,
     pub buffer: Arc<AudioBuffer>,
+    pub loop_enabled: bool,
+    pub loop_start: usize,
+    pub loop_end: Option<usize>,
+    pub stop_at: Option<usize>,
 }
 
 pub struct PlaybackEngine {
@@ -47,6 +51,10 @@ impl PlaybackEngine {
             position_frac: 0.0,
             edit_list,
             buffer: buffer.clone(),
+            loop_enabled: false,
+            loop_start: 0,
+            loop_end: None,
+            stop_at: None,
         }));
 
         let mut audio_unit = AudioUnit::new(IOType::DefaultOutput)?;
@@ -84,7 +92,15 @@ impl PlaybackEngine {
 
             for i in 0..num_frames {
                 let pos = guard.position;
-                if pos >= total {
+                let boundary = guard.stop_at.unwrap_or(
+                    guard.loop_end.filter(|_| guard.loop_enabled).unwrap_or(total)
+                );
+                if pos >= boundary {
+                    if guard.loop_enabled && guard.stop_at.is_none() {
+                        guard.position = guard.loop_start;
+                        guard.position_frac = 0.0;
+                        continue;
+                    }
                     guard.playing = false;
                     for (ch_idx, channel) in data.channels_mut().enumerate() {
                         if ch_idx < device_channels {
@@ -133,6 +149,7 @@ impl PlaybackEngine {
             if s.position >= s.edit_list.total_frames() {
                 s.position = 0;
             }
+            s.stop_at = None;
             s.playing = true;
         }
     }
@@ -163,6 +180,20 @@ impl PlaybackEngine {
 
     pub fn is_playing(&self) -> bool {
         self.state.lock().map(|s| s.playing).unwrap_or(false)
+    }
+
+    pub fn set_loop(&self, enabled: bool, start: usize, end: Option<usize>) {
+        if let Ok(mut s) = self.state.lock() {
+            s.loop_enabled = enabled;
+            s.loop_start = start;
+            s.loop_end = end;
+        }
+    }
+
+    pub fn set_stop_at(&self, frame: Option<usize>) {
+        if let Ok(mut s) = self.state.lock() {
+            s.stop_at = frame;
+        }
     }
 
     pub fn set_edit_list(&self, edit_list: EditList) {

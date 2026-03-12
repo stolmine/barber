@@ -2,6 +2,7 @@ use egui::{Color32, Painter, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui
 
 use crate::audio::peaks::PeakData;
 use crate::edit::EditList;
+use crate::ui::toolbar::ToolbarAction;
 
 pub struct WaveformState {
     pub scroll_offset: f64,
@@ -50,6 +51,15 @@ impl WaveformState {
         self.zoom *= 2.0;
     }
 
+    pub fn ensure_visible(&mut self, frame: usize) {
+        let visible_start = self.scroll_offset;
+        let visible_end = self.scroll_offset + self.last_width as f64 * self.zoom;
+        let frame_f = frame as f64;
+        if frame_f < visible_start || frame_f > visible_end {
+            self.scroll_offset = (frame_f - self.last_width as f64 * self.zoom * 0.2).max(0.0);
+        }
+    }
+
     fn frame_to_x(&self, frame: usize, rect: &Rect) -> f32 {
         let px = (frame as f64 - self.scroll_offset) / self.zoom;
         rect.left() + px as f32
@@ -67,11 +77,20 @@ pub struct WaveformWidget<'a> {
     edit_list: &'a EditList,
     state: &'a mut WaveformState,
     sample_rate: u32,
+    action: &'a mut Option<ToolbarAction>,
+    has_clipboard: bool,
 }
 
 impl<'a> WaveformWidget<'a> {
-    pub fn new(peaks: &'a PeakData, edit_list: &'a EditList, state: &'a mut WaveformState, sample_rate: u32) -> Self {
-        Self { peaks, edit_list, state, sample_rate }
+    pub fn new(
+        peaks: &'a PeakData,
+        edit_list: &'a EditList,
+        state: &'a mut WaveformState,
+        sample_rate: u32,
+        action: &'a mut Option<ToolbarAction>,
+        has_clipboard: bool,
+    ) -> Self {
+        Self { peaks, edit_list, state, sample_rate, action, has_clipboard }
     }
 }
 
@@ -97,6 +116,36 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
         }
 
         handle_input(ui, &response, waveform_rect, self.state, total_frames);
+
+        let has_sel = self.state.selection.is_some();
+        let has_clip = self.has_clipboard;
+        response.context_menu(|ui| {
+            if ui.add_enabled(has_sel, egui::Button::new("Cut")).clicked() {
+                *self.action = Some(ToolbarAction::Cut);
+                ui.close_menu();
+            }
+            if ui.add_enabled(has_sel, egui::Button::new("Copy")).clicked() {
+                *self.action = Some(ToolbarAction::Copy);
+                ui.close_menu();
+            }
+            if ui.add_enabled(has_clip, egui::Button::new("Paste")).clicked() {
+                *self.action = Some(ToolbarAction::Paste);
+                ui.close_menu();
+            }
+            ui.separator();
+            if ui.add_enabled(has_sel, egui::Button::new("Gap Delete")).clicked() {
+                *self.action = Some(ToolbarAction::GapDelete);
+                ui.close_menu();
+            }
+            if ui.add_enabled(has_sel, egui::Button::new("Ripple Delete")).clicked() {
+                *self.action = Some(ToolbarAction::RippleDelete);
+                ui.close_menu();
+            }
+            if ui.add_enabled(has_sel, egui::Button::new("Crop")).clicked() {
+                *self.action = Some(ToolbarAction::Crop);
+                ui.close_menu();
+            }
+        });
 
         painter.rect_filled(rect, 0.0, Color32::from_rgb(20, 20, 24));
         draw_ruler(&painter, self.state, rect, rect.bottom(), self.sample_rate);
@@ -207,15 +256,29 @@ fn handle_input(
     let max_scroll = (total_frames as f64 - rect.width() as f64 * state.zoom).max(0.0);
     state.scroll_offset = state.scroll_offset.min(max_scroll);
 
-    if response.drag_started() {
+    let primary_down = ui.input(|i| i.pointer.primary_down());
+    let primary_released = ui.input(|i| i.pointer.primary_released());
+    let secondary_down = ui.input(|i| i.pointer.secondary_down());
+
+    log::debug!(
+        "handle_input: drag_started={} dragged={} drag_stopped={} clicked={} clicked_primary={} clicked_secondary={} primary_down={} primary_released={} secondary_down={} drag_start={:?} selection={:?}",
+        response.drag_started(), response.dragged(), response.drag_stopped(),
+        response.clicked(), response.clicked_by(egui::PointerButton::Primary),
+        response.clicked_by(egui::PointerButton::Secondary),
+        primary_down, primary_released, secondary_down,
+        state.drag_start, state.selection,
+    );
+
+    if response.drag_started() && primary_down && !secondary_down {
         if let Some(pos) = response.interact_pointer_pos() {
             let frame = state.x_to_frame(pos.x, &rect);
+            log::debug!("drag_started (primary): frame={}", frame);
             state.drag_start = Some(frame);
             state.selection = None;
         }
     }
 
-    if response.dragged() {
+    if response.dragged() && state.drag_start.is_some() {
         if let (Some(start), Some(pos)) = (state.drag_start, response.interact_pointer_pos()) {
             let end = state.x_to_frame(pos.x, &rect);
             let (a, b) = if start <= end { (start, end) } else { (end, start) };
@@ -225,19 +288,22 @@ fn handle_input(
         }
     }
 
-    if response.drag_stopped() {
+    if response.drag_stopped() && state.drag_start.is_some() {
+        log::debug!("drag_stopped: selection={:?}", state.selection);
         if state.selection.is_none() {
             if let Some(pos) = response.interact_pointer_pos() {
                 let frame = state.x_to_frame(pos.x, &rect);
+                log::debug!("drag_stopped -> set playhead to {}", frame);
                 state.playhead = frame.min(total_frames);
             }
         }
         state.drag_start = None;
     }
 
-    if response.clicked() && state.drag_start.is_none() {
+    if response.clicked_by(egui::PointerButton::Primary) && state.drag_start.is_none() {
         if let Some(pos) = response.interact_pointer_pos() {
             let frame = state.x_to_frame(pos.x, &rect);
+            log::debug!("clicked_primary -> set playhead to {}", frame);
             state.playhead = frame.min(total_frames);
             state.selection = None;
         }
