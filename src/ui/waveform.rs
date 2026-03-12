@@ -11,6 +11,7 @@ pub struct WaveformState {
     pub playhead: usize,
     pub last_width: f32,
     pub needs_fit: bool,
+    pub phantom_playhead: Option<usize>,
     drag_start: Option<usize>,
 }
 
@@ -23,6 +24,7 @@ impl Default for WaveformState {
             playhead: 0,
             last_width: 0.0,
             needs_fit: true,
+            phantom_playhead: None,
             drag_start: None,
         }
     }
@@ -79,6 +81,7 @@ pub struct WaveformWidget<'a> {
     sample_rate: u32,
     action: &'a mut Option<ToolbarAction>,
     has_clipboard: bool,
+    audio_samples: Option<&'a [f32]>,
 }
 
 impl<'a> WaveformWidget<'a> {
@@ -89,8 +92,9 @@ impl<'a> WaveformWidget<'a> {
         sample_rate: u32,
         action: &'a mut Option<ToolbarAction>,
         has_clipboard: bool,
+        audio_samples: Option<&'a [f32]>,
     ) -> Self {
-        Self { peaks, edit_list, state, sample_rate, action, has_clipboard }
+        Self { peaks, edit_list, state, sample_rate, action, has_clipboard, audio_samples }
     }
 }
 
@@ -115,7 +119,7 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
             self.state.needs_fit = false;
         }
 
-        handle_input(ui, &response, waveform_rect, self.state, total_frames);
+        handle_input(ui, &response, waveform_rect, self.state, total_frames, self.edit_list, self.audio_samples);
 
         let has_sel = self.state.selection.is_some();
         let has_clip = self.has_clipboard;
@@ -143,6 +147,10 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
             }
             if ui.add_enabled(has_sel, egui::Button::new("Crop")).clicked() {
                 *self.action = Some(ToolbarAction::Crop);
+                ui.close_menu();
+            }
+            if ui.add_enabled(has_sel, egui::Button::new("Duplicate")).clicked() {
+                *self.action = Some(ToolbarAction::Duplicate);
                 ui.close_menu();
             }
         });
@@ -213,6 +221,7 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
         }
 
         draw_selection(&painter, self.state, waveform_rect, total_frames);
+        draw_phantom_playhead(&painter, self.state, waveform_rect, self.peaks, self.edit_list, num_channels, channel_height);
         draw_playhead(&painter, self.state, waveform_rect);
 
         response
@@ -225,6 +234,8 @@ fn handle_input(
     rect: Rect,
     state: &mut WaveformState,
     total_frames: usize,
+    edit_list: &EditList,
+    audio_samples: Option<&[f32]>,
 ) {
     if response.hovered() {
         let scroll_delta = ui.input(|i| i.smooth_scroll_delta);
@@ -257,22 +268,12 @@ fn handle_input(
     state.scroll_offset = state.scroll_offset.min(max_scroll);
 
     let primary_down = ui.input(|i| i.pointer.primary_down());
-    let primary_released = ui.input(|i| i.pointer.primary_released());
     let secondary_down = ui.input(|i| i.pointer.secondary_down());
-
-    log::debug!(
-        "handle_input: drag_started={} dragged={} drag_stopped={} clicked={} clicked_primary={} clicked_secondary={} primary_down={} primary_released={} secondary_down={} drag_start={:?} selection={:?}",
-        response.drag_started(), response.dragged(), response.drag_stopped(),
-        response.clicked(), response.clicked_by(egui::PointerButton::Primary),
-        response.clicked_by(egui::PointerButton::Secondary),
-        primary_down, primary_released, secondary_down,
-        state.drag_start, state.selection,
-    );
+    let _primary_released = ui.input(|i| i.pointer.primary_released());
 
     if response.drag_started() && primary_down && !secondary_down {
         if let Some(pos) = response.interact_pointer_pos() {
             let frame = state.x_to_frame(pos.x, &rect);
-            log::debug!("drag_started (primary): frame={}", frame);
             state.drag_start = Some(frame);
             state.selection = None;
         }
@@ -289,21 +290,25 @@ fn handle_input(
     }
 
     if response.drag_stopped() && state.drag_start.is_some() {
-        log::debug!("drag_stopped: selection={:?}", state.selection);
         if state.selection.is_none() {
             if let Some(pos) = response.interact_pointer_pos() {
                 let frame = state.x_to_frame(pos.x, &rect);
-                log::debug!("drag_stopped -> set playhead to {}", frame);
                 state.playhead = frame.min(total_frames);
             }
         }
         state.drag_start = None;
+        if let (Some((start, end)), Some(samples)) = (state.selection, audio_samples) {
+            let snapped_start = crate::audio::zero_crossing::find_nearest_zero_crossing(samples, edit_list, start, 512);
+            let snapped_end = crate::audio::zero_crossing::find_nearest_zero_crossing(samples, edit_list, end, 512);
+            if snapped_start < snapped_end {
+                state.selection = Some((snapped_start, snapped_end));
+            }
+        }
     }
 
     if response.clicked_by(egui::PointerButton::Primary) && state.drag_start.is_none() {
         if let Some(pos) = response.interact_pointer_pos() {
             let frame = state.x_to_frame(pos.x, &rect);
-            log::debug!("clicked_primary -> set playhead to {}", frame);
             state.playhead = frame.min(total_frames);
             state.selection = None;
         }
@@ -326,6 +331,59 @@ fn draw_selection(painter: &Painter, state: &WaveformState, rect: Rect, total_fr
     );
     painter.rect_filled(sel_rect, 0.0, Color32::from_rgba_unmultiplied(100, 180, 255, 40));
     painter.rect_stroke(sel_rect, 0.0, Stroke::new(1.0, Color32::from_rgba_unmultiplied(100, 180, 255, 120)), StrokeKind::Middle);
+}
+
+fn draw_phantom_playhead(
+    painter: &Painter,
+    state: &WaveformState,
+    rect: Rect,
+    peaks: &PeakData,
+    edit_list: &EditList,
+    num_channels: usize,
+    channel_height: f32,
+) {
+    let Some(frame) = state.phantom_playhead else { return };
+    let x = state.frame_to_x(frame, &rect);
+    if x < rect.left() || x > rect.right() {
+        return;
+    }
+    let bg_color = Color32::from_rgba_unmultiplied(255, 220, 60, 50);
+    let wave_color = Color32::from_rgb(255, 120, 0);
+
+    for ch in 0..num_channels.max(1) {
+        let ch_top = rect.top() + ch as f32 * channel_height;
+        let center_y = ch_top + channel_height * 0.5;
+        let half_h = channel_height * 0.5;
+
+        let peak = peaks.get_peaks(ch, frame, frame + 1, 1);
+        let (lo, hi) = peak.first().copied().unwrap_or((0.0, 0.0));
+        let (lo, hi) = if edit_list.is_silence_range(frame, frame + 1) {
+            (0.0, 0.0)
+        } else {
+            (lo, hi)
+        };
+        let wave_top = (center_y - hi * half_h).max(ch_top);
+        let wave_bot = (center_y - lo * half_h).min(ch_top + channel_height);
+
+        if wave_top > ch_top {
+            painter.line_segment(
+                [Pos2::new(x, ch_top), Pos2::new(x, wave_top)],
+                Stroke::new(1.0, bg_color),
+            );
+        }
+        if wave_bot > wave_top {
+            painter.line_segment(
+                [Pos2::new(x, wave_top), Pos2::new(x, wave_bot)],
+                Stroke::new(1.0, wave_color),
+            );
+        }
+        if wave_bot < ch_top + channel_height {
+            painter.line_segment(
+                [Pos2::new(x, wave_bot), Pos2::new(x, ch_top + channel_height)],
+                Stroke::new(1.0, bg_color),
+            );
+        }
+    }
 }
 
 fn draw_playhead(painter: &Painter, state: &WaveformState, rect: Rect) {

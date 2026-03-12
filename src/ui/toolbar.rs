@@ -16,6 +16,7 @@ pub enum ToolbarAction {
     Cut,
     Copy,
     Paste,
+    Duplicate,
     Undo,
     Redo,
     PlaySelection,
@@ -53,6 +54,7 @@ pub fn toolbar_ui(
     let cut_pressed = ui.input(|i| i.modifiers.command && i.key_pressed(Key::X));
     let copy_pressed = ui.input(|i| i.modifiers.command && !i.modifiers.shift && i.key_pressed(Key::C));
     let paste_pressed = ui.input(|i| i.modifiers.command && i.key_pressed(Key::V));
+    let duplicate_pressed = ui.input(|i| i.modifiers.command && i.key_pressed(Key::D));
 
     let play_pause_action = if is_playing {
         ToolbarAction::Pause
@@ -101,6 +103,10 @@ pub fn toolbar_ui(
 
     if paste_pressed && has_clipboard {
         action = Some(ToolbarAction::Paste);
+    }
+
+    if duplicate_pressed && has_selection {
+        action = Some(ToolbarAction::Duplicate);
     }
 
     ui.horizontal(|ui| {
@@ -211,6 +217,10 @@ pub fn toolbar_ui(
 
         if ui.add_enabled(has_clipboard, egui::Button::new("Paste")).clicked() {
             action = Some(ToolbarAction::Paste);
+        }
+
+        if ui.add_enabled(has_selection, egui::Button::new("Dup")).clicked() {
+            action = Some(ToolbarAction::Duplicate);
         }
     });
 

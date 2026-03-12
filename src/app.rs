@@ -73,6 +73,7 @@ impl eframe::App for BarberApp {
                     self.waveform_state.playhead, engine_pos
                 );
                 self.waveform_state.playhead = engine_pos;
+                self.waveform_state.phantom_playhead = None;
             }
         }
         self.was_playing = is_playing;
@@ -121,7 +122,8 @@ impl eframe::App for BarberApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             if let (Some(peaks), Some(edit_list)) = (&self.peak_data, &self.edit_list) {
                 let sample_rate = self.audio_buffer.as_ref().map_or(44100, |b| b.sample_rate);
-                let widget = WaveformWidget::new(peaks, edit_list, &mut self.waveform_state, sample_rate, &mut action, self.clipboard.is_some());
+                let audio_samples = self.audio_buffer.as_ref().and_then(|b| b.samples.get(0).map(|s| s.as_slice()));
+                let widget = WaveformWidget::new(peaks, edit_list, &mut self.waveform_state, sample_rate, &mut action, self.clipboard.is_some(), audio_samples);
                 ui.add(widget);
             } else {
                 ui.centered_and_justified(|ui| {
@@ -163,6 +165,7 @@ impl BarberApp {
                             .unwrap_or((0, None));
                         engine.set_loop(self.loop_enabled, start, end);
                     }
+                    self.waveform_state.phantom_playhead = Some(self.waveform_state.playhead);
                     engine.play();
                 }
             }
@@ -175,6 +178,7 @@ impl BarberApp {
                 if let Some(engine) = &self.playback_engine {
                     engine.stop();
                     self.waveform_state.playhead = 0;
+                    self.waveform_state.phantom_playhead = None;
                 }
             }
             ToolbarAction::ZoomIn => self.waveform_state.zoom_in(),
@@ -195,6 +199,7 @@ impl BarberApp {
             ToolbarAction::Cut => self.cut(),
             ToolbarAction::Copy => self.copy(),
             ToolbarAction::Paste => self.paste(),
+            ToolbarAction::Duplicate => self.duplicate(),
             ToolbarAction::Undo => self.undo(),
             ToolbarAction::Redo => self.redo(),
             ToolbarAction::ToggleLoop => {
@@ -213,6 +218,7 @@ impl BarberApp {
                 if let (Some(engine), Some((start, end))) = (&self.playback_engine, self.waveform_state.selection) {
                     engine.set_stop_at(Some(end));
                     engine.seek(start);
+                    self.waveform_state.phantom_playhead = Some(start);
                     engine.play();
                 }
             }
@@ -340,6 +346,21 @@ impl BarberApp {
         if let Some(el) = &mut self.edit_list {
             el.insert(self.waveform_state.playhead, &regions);
             self.waveform_state.selection = None;
+        }
+        self.post_edit(old_total);
+    }
+
+    fn duplicate(&mut self) {
+        let Some((start, end)) = self.waveform_state.selection else { return };
+        if let Some(el) = &self.edit_list {
+            self.history.push(el.clone());
+        }
+        let old_total = self.edit_list.as_ref().map(|el| el.total_frames()).unwrap_or(0);
+        if let Some(el) = &mut self.edit_list {
+            let regions = el.extract_regions(start, end);
+            el.insert(end, &regions);
+            let dup_len = end - start;
+            self.waveform_state.selection = Some((end, end + dup_len));
         }
         self.post_edit(old_total);
     }

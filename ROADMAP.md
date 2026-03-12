@@ -163,6 +163,8 @@ Project Setup
 - **Fade in/out on edit boundaries:** Crossfade to prevent clicks at cut points
 - **Normalize:** Scale audio to peak at 0dB (or user-specified level)
 - **DC offset removal:** Center waveform on zero crossing
+- **Selection-scoped adjustments:** When a region is selected, apply pitch/speed, reverse, or amplitude changes to only that region (hotkeys or floating controls à la Adobe Audition)
+- **Individual L/R channel editing:** Edit left/right channels independently on stereo files
 
 ### Waveform Display
 - **Amplitude ruler:** Per-channel amplitude scale on left side
@@ -174,12 +176,14 @@ Project Setup
 ### Playback
 - **Phantom playhead:** Ghost marker at play-start position while actual playhead advances
 - **Speed/pitch control:** Variable playback rate with optional pitch preservation
+- **Playback volume control:** Separate output gain from waveform amplitude
 
 ### Interaction
 - **Full hotkey coverage:** Keyboard shortcuts for all operations
 - **Trackpad gestures:** Native pinch-to-zoom and two-finger scroll
 - **Prompt to save on quit:** Warning when quitting with unsaved modifications
 - **Menu bar:** Standard macOS menu bar for accessibility and discoverability
+- **BPM detection and beat grid:** Adjustable beat grid for quantized edits with quantized selection on hotkey/toggle
 
 ### UI Polish (last priority)
 - **Sexier UI:** Better colors, typography, spacing, custom styling
@@ -196,17 +200,3 @@ Project Setup
 - Sample rate conversion on export
 - Recent files list
 - Optimization - improve load times and snappiness as much as possible. File picker in particular is opening incredibly slowly right now
-
-new feature ideas not yet categorized:
-
-when a region is selected adjustments to the following should affect only it(once these features are actually built):
-- pitch/speed
-- reverse
-- amplitude
-this could be accomplished with hotkeys or floating controls a la adobe audition
-
-optional bpm detection and adjustable beat grid for quantized edits (w/ quantized selection available on hotkey/toggle)
-
-playback volume control vs actual amplitude
-
-individual editing of L/R channels on stereo files
