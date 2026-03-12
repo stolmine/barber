@@ -1,6 +1,7 @@
 mod app;
 mod audio;
 mod edit;
+mod history;
 mod ui;
 
 fn main() -> eframe::Result<()> {

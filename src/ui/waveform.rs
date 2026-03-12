@@ -35,6 +35,13 @@ impl WaveformState {
         }
     }
 
+    pub fn zoom_to_selection(&mut self, sel_start: usize, sel_end: usize, width: f32) {
+        if width > 0.0 && sel_end > sel_start {
+            self.zoom = (sel_end - sel_start) as f64 / width as f64;
+            self.scroll_offset = sel_start as f64;
+        }
+    }
+
     pub fn zoom_in(&mut self) {
         self.zoom = (self.zoom / 2.0).max(1.0);
     }
@@ -59,11 +66,12 @@ pub struct WaveformWidget<'a> {
     peaks: &'a PeakData,
     edit_list: &'a EditList,
     state: &'a mut WaveformState,
+    sample_rate: u32,
 }
 
 impl<'a> WaveformWidget<'a> {
-    pub fn new(peaks: &'a PeakData, edit_list: &'a EditList, state: &'a mut WaveformState) -> Self {
-        Self { peaks, edit_list, state }
+    pub fn new(peaks: &'a PeakData, edit_list: &'a EditList, state: &'a mut WaveformState, sample_rate: u32) -> Self {
+        Self { peaks, edit_list, state, sample_rate }
     }
 }
 
@@ -72,10 +80,14 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
         let available = ui.available_size();
         let (response, painter) = ui.allocate_painter(available, Sense::click_and_drag());
         let rect = response.rect;
+        const RULER_HEIGHT: f32 = 20.0;
+        let waveform_rect = Rect::from_min_max(
+            Pos2::new(rect.left(), rect.top()),
+            Pos2::new(rect.right(), rect.bottom() - RULER_HEIGHT),
+        );
 
         let total_frames = self.edit_list.total_frames();
         let width = rect.width();
-        let height = rect.height();
 
         self.state.last_width = width;
 
@@ -84,16 +96,17 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
             self.state.needs_fit = false;
         }
 
-        handle_input(ui, &response, rect, self.state, total_frames);
+        handle_input(ui, &response, waveform_rect, self.state, total_frames);
 
         painter.rect_filled(rect, 0.0, Color32::from_rgb(20, 20, 24));
+        draw_ruler(&painter, self.state, rect, rect.bottom(), self.sample_rate);
 
         if total_frames == 0 || width <= 0.0 {
             return response;
         }
 
         let num_channels = self.peaks.channels();
-        let channel_height = height / num_channels.max(1) as f32;
+        let channel_height = waveform_rect.height() / num_channels.max(1) as f32;
 
         let start_frame = self.state.scroll_offset.max(0.0) as usize;
         let end_frame = (self.state.scroll_offset + width as f64 * self.state.zoom) as usize;
@@ -105,13 +118,13 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
         };
 
         for ch in 0..num_channels {
-            let ch_top = rect.top() + ch as f32 * channel_height;
+            let ch_top = waveform_rect.top() + ch as f32 * channel_height;
             let ch_rect = Rect::from_min_size(
-                Pos2::new(rect.left(), ch_top),
+                Pos2::new(waveform_rect.left(), ch_top),
                 Vec2::new(width, channel_height),
             );
             let center_y = ch_rect.center().y;
-            let half_h = channel_height * 0.45;
+            let half_h = channel_height * 0.5;
 
             painter.line_segment(
                 [Pos2::new(ch_rect.left(), center_y), Pos2::new(ch_rect.right(), center_y)],
@@ -125,9 +138,16 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
             let peaks = self.peaks.get_peaks(ch, start_frame, end_frame, num_pixels);
 
             for (px, (min_val, max_val)) in peaks.iter().enumerate() {
-                let x = rect.left() + px as f32;
-                let y_top = center_y - max_val * half_h;
-                let y_bot = center_y - min_val * half_h;
+                let px_frame_start = start_frame + (px as f64 * self.state.zoom) as usize;
+                let px_frame_end = start_frame + ((px + 1) as f64 * self.state.zoom) as usize;
+                let (lo, hi) = if self.edit_list.is_silence_range(px_frame_start, px_frame_end.max(px_frame_start + 1)) {
+                    (0.0f32, 0.0f32)
+                } else {
+                    (*min_val, *max_val)
+                };
+                let x = waveform_rect.left() + px as f32;
+                let y_top = (center_y - hi * half_h).max(ch_rect.top());
+                let y_bot = (center_y - lo * half_h).min(ch_rect.bottom());
                 painter.line_segment(
                     [Pos2::new(x, y_top), Pos2::new(x, y_bot)],
                     Stroke::new(1.0, Color32::from_rgb(100, 180, 255)),
@@ -135,8 +155,16 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
             }
         }
 
-        draw_selection(&painter, self.state, rect, total_frames);
-        draw_playhead(&painter, self.state, rect);
+        for ch in 1..num_channels {
+            let y = waveform_rect.top() + ch as f32 * channel_height;
+            painter.line_segment(
+                [Pos2::new(waveform_rect.left(), y), Pos2::new(waveform_rect.right(), y)],
+                Stroke::new(1.0, Color32::from_rgb(70, 70, 80)),
+            );
+        }
+
+        draw_selection(&painter, self.state, waveform_rect, total_frames);
+        draw_playhead(&painter, self.state, waveform_rect);
 
         response
     }
@@ -241,5 +269,51 @@ fn draw_playhead(painter: &Painter, state: &WaveformState, rect: Rect) {
             [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
             Stroke::new(2.0, Color32::from_rgb(255, 220, 60)),
         );
+    }
+}
+
+fn draw_ruler(painter: &Painter, state: &WaveformState, rect: Rect, ruler_bottom: f32, sample_rate: u32) {
+    let visible_frames = rect.width() as f64 * state.zoom;
+    let seconds_per_pixel = state.zoom / sample_rate as f64;
+
+    let intervals = [0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0];
+    let interval = intervals.iter().copied()
+        .find(|&iv| iv / seconds_per_pixel >= 80.0)
+        .unwrap_or(60.0);
+
+    let start_sec = state.scroll_offset / sample_rate as f64;
+    let end_sec = (state.scroll_offset + visible_frames) / sample_rate as f64;
+    let first_tick = (start_sec / interval).floor() * interval;
+
+    let font = egui::FontId::monospace(10.0);
+    let color = Color32::from_rgb(160, 160, 170);
+    let tick_color = Color32::from_rgb(80, 80, 90);
+
+    let mut t = first_tick;
+    while t <= end_sec {
+        let frame = (t * sample_rate as f64) as usize;
+        let x = state.frame_to_x(frame, &rect);
+        if x >= rect.left() && x <= rect.right() {
+            let ruler_top = ruler_bottom - 20.0;
+            painter.line_segment(
+                [Pos2::new(x, ruler_top), Pos2::new(x, ruler_top + 6.0)],
+                Stroke::new(1.0, tick_color),
+            );
+            let label = if t >= 60.0 {
+                format!("{}:{:02}", t as u32 / 60, t as u32 % 60)
+            } else if interval < 1.0 {
+                format!("{:.1}", t)
+            } else {
+                format!("{:.0}", t)
+            };
+            painter.text(
+                Pos2::new(x + 3.0, ruler_top + 5.0),
+                egui::Align2::LEFT_TOP,
+                label,
+                font.clone(),
+                color,
+            );
+        }
+        t += interval;
     }
 }

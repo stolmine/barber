@@ -35,10 +35,15 @@ pub fn export_wav(
 
     let mut writer = WavWriter::create(path, spec)?;
 
-    for source_frame in edit_list.iter_source_frames(0, edit_list.total_frames()) {
+    for maybe_frame in edit_list.iter_source_frames(0, edit_list.total_frames()) {
         for ch in 0..buffer.channels as usize {
-            let sample = buffer.samples[ch][source_frame];
-            let pcm = (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+            let pcm = match maybe_frame {
+                Some(source_frame) => {
+                    let sample = buffer.samples[ch][source_frame];
+                    (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
+                }
+                None => 0i16,
+            };
             writer.write_sample(pcm)?;
         }
     }
