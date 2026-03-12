@@ -153,6 +153,15 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
                 *self.action = Some(ToolbarAction::Duplicate);
                 ui.close_menu();
             }
+            ui.separator();
+            if ui.add_enabled(has_sel, egui::Button::new("Reverse")).clicked() {
+                *self.action = Some(ToolbarAction::Reverse);
+                ui.close_menu();
+            }
+            if ui.add_enabled(has_sel, egui::Button::new("Normalize")).clicked() {
+                *self.action = Some(ToolbarAction::Normalize);
+                ui.close_menu();
+            }
         });
 
         painter.rect_filled(rect, 0.0, Color32::from_rgb(20, 20, 24));
@@ -192,16 +201,18 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
                 continue;
             }
 
-            let peaks = self.peaks.get_peaks(ch, start_frame, end_frame, num_pixels);
-
-            for (px, (min_val, max_val)) in peaks.iter().enumerate() {
+            for px in 0..num_pixels {
                 let px_frame_start = start_frame + (px as f64 * self.state.zoom) as usize;
                 let px_frame_end = start_frame + ((px + 1) as f64 * self.state.zoom) as usize;
-                let (lo, hi) = if self.edit_list.is_silence_range(px_frame_start, px_frame_end.max(px_frame_start + 1)) {
-                    (0.0f32, 0.0f32)
-                } else {
-                    (*min_val, *max_val)
-                };
+                let px_frame_end = px_frame_end.max(px_frame_start + 1);
+                let mut lo = f32::INFINITY;
+                let mut hi = f32::NEG_INFINITY;
+                self.edit_list.for_each_source_range(px_frame_start, px_frame_end, |src_start, src_end, gain| {
+                    let (mn, mx) = self.peaks.get_peaks_for_source_range(ch, src_start, src_end);
+                    lo = lo.min(mn * gain);
+                    hi = hi.max(mx * gain);
+                });
+                let (lo, hi) = if lo == f32::INFINITY { (0.0f32, 0.0f32) } else { (lo, hi) };
                 let x = waveform_rect.left() + px as f32;
                 let y_top = (center_y - hi * half_h).max(ch_rect.top());
                 let y_bot = (center_y - lo * half_h).min(ch_rect.bottom());

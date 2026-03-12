@@ -2,6 +2,7 @@ mod app;
 mod audio;
 mod edit;
 mod history;
+mod keybinds;
 mod ui;
 
 fn main() -> eframe::Result<()> {

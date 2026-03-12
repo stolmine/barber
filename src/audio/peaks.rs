@@ -111,6 +111,24 @@ impl PeakData {
             .collect()
     }
 
+    pub fn get_peaks_for_source_range(&self, channel: usize, source_start: usize, source_end: usize) -> (f32, f32) {
+        if source_start >= source_end { return (0.0, 0.0); }
+        let span = source_end - source_start;
+        let level = self.select_level(span);
+        let block_size = self.base_block_size << level;
+        let level_data = &self.levels[level][channel];
+        let b_start = (source_start / block_size).min(level_data.len());
+        let b_end = ((source_end + block_size - 1) / block_size).min(level_data.len());
+        if b_start >= b_end { return (0.0, 0.0); }
+        let mut lo = f32::INFINITY;
+        let mut hi = f32::NEG_INFINITY;
+        for &(mn, mx) in &level_data[b_start..b_end] {
+            lo = lo.min(mn);
+            hi = hi.max(mx);
+        }
+        if lo == f32::INFINITY { (0.0, 0.0) } else { (lo, hi) }
+    }
+
     pub fn channels(&self) -> usize {
         self.levels.first().map(|l| l.len()).unwrap_or(0)
     }

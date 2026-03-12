@@ -160,16 +160,23 @@ Project Setup
 5. **macOS-only (v0.1):** CoreAudio. Cross-platform via `cpal` is future work.
 6. **f32 internal format:** Simplifies pipeline, ~4x memory vs i16, fine for modern machines.
 
+## v0.1.4 Features (shipped)
+22. Menu bar — File/Edit/Transport/View menus replacing toolbar buttons
+23. Slim transport bar — Play/Pause, Stop, Loop, Follow only
+24. Editable keybind system — TOML-configurable at ~/.config/barber/keybinds.toml
+25. Reverse selection — Cmd+R reverses sample order in selected region
+26. Normalize — per-selection or whole-file 0dB peak normalization via per-region gain
+27. Waveform rendering resolves edit→source per pixel via `for_each_source_range` — correct display after all edits
+28. Cut/Copy/Paste hotkeys fixed — detect egui `Event::Cut/Copy/Paste` events alongside `key_pressed`
+
 ## v0.2 Wishlist
 
 ### Editing
-- **Reverse selection:** Reverse sample order within selected region
-- **Silence selection:** Replace selection with silence (zero samples)
 - **Fade in/out on edit boundaries:** Crossfade to prevent clicks at cut points
-- **Normalize:** Scale audio to peak at 0dB (or user-specified level)
 - **DC offset removal:** Center waveform on zero crossing
 - **Selection-scoped adjustments:** When a region is selected, apply pitch/speed, reverse, or amplitude changes to only that region (hotkeys or floating controls à la Adobe Audition)
-- **Individual L/R channel editing:** Edit left/right channels independently on stereo files
+- **Individual L/R channel editing:** Edit left/right channels independently on stereo files. toggle-able
+- **Apply fades in or out, with selectable curves:** the question will be how to select curves
 
 ### Waveform Display
 - **Amplitude ruler:** Per-channel amplitude scale on left side
@@ -182,10 +189,8 @@ Project Setup
 - **Playback volume control:** Separate output gain from waveform amplitude
 
 ### Interaction
-- **Full hotkey coverage:** Keyboard shortcuts for all operations
 - **Trackpad gestures:** Native pinch-to-zoom and two-finger scroll
 - **Prompt to save on quit:** Warning when quitting with unsaved modifications
-- **Menu bar:** Standard macOS menu bar for accessibility and discoverability
 - **BPM detection and beat grid:** Adjustable beat grid for quantized edits with quantized selection on hotkey/toggle
 
 ### UI Polish (last priority)
@@ -193,6 +198,8 @@ Project Setup
 - **Tabbed concurrent projects:** Open multiple files, splice material between them
 - **Metering:** just simple stereo metering with themable colors, could be cute with an ascii option borrowed from monokit
 - **Minimap:** adaptive overview of waveform when zoomed
+- **Previous action on status bar:** like micro has, the user's previous action should always read out on the status bar, with timespans affected if possible
+- **Keystroke tracking on status bar:** i am thinking we might gor for vim style chained keybinds for some actions, it would be useful to detect when modifiers are hit and display held and eventually input key combos
 
 ### Infrastructure
 - Async file loading with progress bar

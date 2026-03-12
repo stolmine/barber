@@ -110,17 +110,18 @@ impl PlaybackEngine {
                     continue;
                 }
 
-                let source_frame = guard.edit_list.resolve(pos);
+                let resolved = guard.edit_list.resolve(pos);
 
                 for (ch_idx, channel) in data.channels_mut().enumerate() {
                     if ch_idx < device_channels {
-                        channel[i] = match source_frame {
-                            Some(sf) => {
+                        channel[i] = match resolved {
+                            Some((sf, gain)) => {
                                 let src_ch = ch_idx.min(source_channels - 1);
                                 guard.buffer.samples[src_ch]
                                     .get(sf)
                                     .copied()
                                     .unwrap_or(0.0)
+                                    * gain
                             }
                             None => 0.0,
                         };

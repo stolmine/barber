@@ -7,6 +7,8 @@ use crate::audio::peaks::PeakData;
 use crate::audio::playback::PlaybackEngine;
 use crate::edit::{EditList, Region};
 use crate::history::EditHistory;
+use crate::keybinds::Keybinds;
+use crate::ui::menu::menu_bar_ui;
 use crate::ui::toolbar::{toolbar_ui, ToolbarAction};
 use crate::ui::waveform::{WaveformState, WaveformWidget};
 
@@ -20,6 +22,7 @@ pub struct BarberApp {
     error_message: Option<String>,
     history: EditHistory,
     clipboard: Option<Vec<Region>>,
+    keybinds: Keybinds,
     loop_enabled: bool,
     follow_playhead: bool,
     was_playing: bool,
@@ -37,6 +40,7 @@ impl Default for BarberApp {
             error_message: None,
             history: EditHistory::new(),
             clipboard: None,
+            keybinds: Keybinds::load(),
             loop_enabled: false,
             follow_playhead: false,
             was_playing: false,
@@ -79,12 +83,19 @@ impl eframe::App for BarberApp {
         self.was_playing = is_playing;
 
         let mut action = None;
+        let can_undo = self.history.can_undo();
+        let can_redo = self.history.can_redo();
+        let has_clipboard = self.clipboard.is_some();
 
-        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
-            let can_undo = self.history.can_undo();
-            let can_redo = self.history.can_redo();
-            let has_clipboard = self.clipboard.is_some();
-            action = toolbar_ui(ui, is_playing, has_selection, has_file, can_undo, can_redo, has_clipboard, self.loop_enabled, self.follow_playhead);
+        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+            action = menu_bar_ui(ui, &self.keybinds, has_file, has_selection, can_undo, can_redo, has_clipboard);
+        });
+
+        egui::TopBottomPanel::top("transport").show(ctx, |ui| {
+            let toolbar_action = toolbar_ui(ui, is_playing, has_file, self.loop_enabled, self.follow_playhead);
+            if action.is_none() {
+                action = toolbar_action;
+            }
         });
 
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
@@ -131,6 +142,10 @@ impl eframe::App for BarberApp {
                 });
             }
         });
+
+        if action.is_none() {
+            action = self.keybinds.check_input(ctx, is_playing, has_selection, has_file, can_undo, can_redo, has_clipboard);
+        }
 
         if let Some(action) = action {
             self.handle_action(action);
@@ -222,6 +237,8 @@ impl BarberApp {
                     engine.play();
                 }
             }
+            ToolbarAction::Reverse => self.reverse_selection(),
+            ToolbarAction::Normalize => self.normalize(),
         }
     }
 
@@ -405,6 +422,54 @@ impl BarberApp {
             self.waveform_state.scroll_offset = self.waveform_state.scroll_offset.min(max_scroll);
         }
         self.sync_playback_engine();
+    }
+
+    fn reverse_selection(&mut self) {
+        let Some((start, end)) = self.waveform_state.selection else { return };
+        if let Some(el) = &self.edit_list {
+            self.history.push(el.clone());
+        }
+        if let Some(el) = &mut self.edit_list {
+            el.reverse_selection(start, end);
+        }
+        self.sync_playback_engine();
+    }
+
+    fn normalize(&mut self) {
+        let (Some(buffer), Some(el)) = (&self.audio_buffer, &self.edit_list) else {
+            log::debug!("normalize: no buffer or edit list");
+            return;
+        };
+        let selection = self.waveform_state.selection;
+        let (start, end) = selection.unwrap_or((0, el.total_frames()));
+        log::debug!("normalize: selection={:?} range={}..{} total={}", selection, start, end, el.total_frames());
+        if start >= end {
+            log::debug!("normalize: empty range, bailing");
+            return;
+        }
+        self.history.push(el.clone());
+        let mut peak: f32 = 0.0;
+        let mut frame_count: usize = 0;
+        for maybe_frame in el.iter_source_frames(start, end - start) {
+            if let Some((sf, gain)) = maybe_frame {
+                for ch in 0..buffer.channels as usize {
+                    let val = (buffer.samples[ch].get(sf).copied().unwrap_or(0.0) * gain).abs();
+                    if val > peak { peak = val; }
+                }
+                frame_count += 1;
+            }
+        }
+        let gain_factor = if peak > 0.0 { 1.0 / peak } else { 1.0 };
+        log::debug!("normalize: scanned {} frames, peak={}, gain_factor={}", frame_count, peak, gain_factor);
+        if peak > 0.0 {
+            if let Some(el) = &mut self.edit_list {
+                el.set_gain_range(start, end, gain_factor);
+            }
+            self.sync_playback_engine();
+            log::debug!("normalize: applied gain_factor={} to range {}..{}", gain_factor, start, end);
+        } else {
+            log::debug!("normalize: peak is 0, nothing to do");
+        }
     }
 
     fn sync_playback_engine(&self) {

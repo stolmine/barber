@@ -1,14 +1,16 @@
 #[derive(Clone, Debug)]
 pub enum Region {
-    Source { source_start: usize, source_end: usize },
+    Source { source_start: usize, source_end: usize, gain: f32 },
     Silence { len: usize },
+    Reversed { source_start: usize, source_end: usize, gain: f32 },
 }
 
 impl Region {
     pub fn len(&self) -> usize {
         match self {
-            Region::Source { source_start, source_end } => source_end - source_start,
+            Region::Source { source_start, source_end, .. } => source_end - source_start,
             Region::Silence { len } => *len,
+            Region::Reversed { source_start, source_end, .. } => source_end - source_start,
         }
     }
 }
@@ -21,7 +23,7 @@ pub struct EditList {
 impl EditList {
     pub fn from_length(num_frames: usize) -> Self {
         Self {
-            regions: vec![Region::Source { source_start: 0, source_end: num_frames }],
+            regions: vec![Region::Source { source_start: 0, source_end: num_frames, gain: 1.0 }],
         }
     }
 
@@ -29,14 +31,15 @@ impl EditList {
         self.regions.iter().map(|r| r.len()).sum()
     }
 
-    pub fn resolve(&self, edit_frame: usize) -> Option<usize> {
+    pub fn resolve(&self, edit_frame: usize) -> Option<(usize, f32)> {
         let mut offset = 0;
         for region in &self.regions {
             let rlen = region.len();
             if edit_frame < offset + rlen {
                 return match region {
-                    Region::Source { source_start, .. } => Some(source_start + (edit_frame - offset)),
+                    Region::Source { source_start, gain, .. } => Some((source_start + (edit_frame - offset), *gain)),
                     Region::Silence { .. } => None,
+                    Region::Reversed { source_end, gain, .. } => Some((source_end - 1 - (edit_frame - offset), *gain)),
                 };
             }
             offset += rlen;
@@ -44,7 +47,7 @@ impl EditList {
         None
     }
 
-    pub fn iter_source_frames(&self, start: usize, len: usize) -> impl Iterator<Item = Option<usize>> + '_ {
+    pub fn iter_source_frames(&self, start: usize, len: usize) -> impl Iterator<Item = Option<(usize, f32)>> + '_ {
         let end = start + len;
         let mut offset = 0usize;
         let mut region_idx = 0usize;
@@ -74,8 +77,9 @@ impl EditList {
                 let rlen = region.len();
                 if edit_pos < current_offset + rlen {
                     let result = match region {
-                        Region::Source { source_start, .. } => Some(Some(source_start + (edit_pos - current_offset))),
+                        Region::Source { source_start, gain, .. } => Some(Some((source_start + (edit_pos - current_offset), *gain))),
                         Region::Silence { .. } => Some(None),
+                        Region::Reversed { source_end, gain, .. } => Some(Some((source_end - 1 - (edit_pos - current_offset), *gain))),
                     };
                     edit_pos += 1;
                     return result;
@@ -106,8 +110,9 @@ impl EditList {
             let overlap_start = start.max(r_start);
             let overlap_end = end.min(r_end);
             if overlap_start < overlap_end {
-                if let Region::Source { .. } = region {
-                    return false;
+                match region {
+                    Region::Silence { .. } => {},
+                    _ => return false,
                 }
                 checked = overlap_end;
             }
@@ -250,25 +255,92 @@ impl EditList {
             }
         });
     }
+
+    pub fn reverse_selection(&mut self, start: usize, end: usize) {
+        if start >= end { return; }
+        let mut extracted = self.extract_regions(start, end);
+        extracted.reverse();
+        for region in &mut extracted {
+            *region = match *region {
+                Region::Source { source_start, source_end, gain } => Region::Reversed { source_start, source_end, gain },
+                Region::Reversed { source_start, source_end, gain } => Region::Source { source_start, source_end, gain },
+                Region::Silence { len } => Region::Silence { len },
+            };
+        }
+        self.ripple_delete(start, end);
+        self.insert(start, &extracted);
+    }
+
+    pub fn for_each_source_range(&self, edit_start: usize, edit_end: usize, mut f: impl FnMut(usize, usize, f32)) {
+        let mut offset = 0;
+        for region in &self.regions {
+            let rlen = region.len();
+            let r_start = offset;
+            let r_end = offset + rlen;
+            if r_end <= edit_start { offset = r_end; continue; }
+            if r_start >= edit_end { break; }
+            let overlap_start = edit_start.max(r_start);
+            let overlap_end = edit_end.min(r_end);
+            if overlap_start < overlap_end {
+                let inner_start = overlap_start - r_start;
+                let inner_end = overlap_end - r_start;
+                match region {
+                    Region::Source { source_start, gain, .. } => {
+                        f(source_start + inner_start, source_start + inner_end, *gain);
+                    }
+                    Region::Reversed { source_end, gain, .. } => {
+                        f(source_end - inner_end, source_end - inner_start, *gain);
+                    }
+                    Region::Silence { .. } => {}
+                }
+            }
+            offset = r_end;
+        }
+    }
+
+    pub fn set_gain_range(&mut self, start: usize, end: usize, gain_factor: f32) {
+        if start >= end { return; }
+        let mut extracted = self.extract_regions(start, end);
+        for region in &mut extracted {
+            match region {
+                Region::Source { gain, .. } | Region::Reversed { gain, .. } => *gain *= gain_factor,
+                Region::Silence { .. } => {}
+            }
+        }
+        self.ripple_delete(start, end);
+        self.insert(start, &extracted);
+    }
 }
 
 fn split_region_prefix(region: &Region, prefix_len: usize) -> Region {
     match region {
-        Region::Source { source_start, .. } => Region::Source {
+        Region::Source { source_start, gain, .. } => Region::Source {
             source_start: *source_start,
             source_end: source_start + prefix_len,
+            gain: *gain,
         },
         Region::Silence { .. } => Region::Silence { len: prefix_len },
+        Region::Reversed { source_end, gain, .. } => Region::Reversed {
+            source_start: source_end - prefix_len,
+            source_end: *source_end,
+            gain: *gain,
+        },
     }
 }
 
 fn split_region_suffix(region: &Region, inner_start: usize, inner_end: usize) -> Region {
     match region {
-        Region::Source { source_start, .. } => Region::Source {
+        Region::Source { source_start, gain, .. } => Region::Source {
             source_start: source_start + inner_start,
             source_end: source_start + inner_end,
+            gain: *gain,
         },
         Region::Silence { .. } => Region::Silence { len: inner_end - inner_start },
+        Region::Reversed { source_end, gain, .. } => Region::Reversed {
+            source_start: source_end - inner_end,
+            source_end: source_end - inner_start,
+            gain: *gain,
+        },
     }
 }
 
