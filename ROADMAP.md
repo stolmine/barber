@@ -141,6 +141,15 @@ Export -------------------------------------+
 60. Variable speed/pitch — per-region `speed` field on Region, Cmd+Shift+R opens speed dialog with percentage and semitone+cents (live-linked), preview plays selection at speed, OK applies as undoable edit that expands/contracts timeline. Selectable interpolation (Nearest/Linear/Cubic Hermite) via lock-free atomic
 61. Gain fader — left side panel with dB ruler (-24 to +24), persistent vertical fader reflecting selection's current gain. Drag applies relative gain (preserves per-region balance), undo snapshot on drag start, engine sync on release. Double-click resets to 0dB
 
+### v0.2.2
+62. Labeled undo/redo — undo/redo history stores action labels, menu shows "Undo Cut", "Redo Normalize", etc.
+63. Zoom percentages — status bar displays current horizontal and vertical zoom percentages
+64. Minimap playhead — playhead line drawn on minimap for orientation during playback
+65. Zoom/crop keybinds — Cmd+/- for horizontal zoom, Cmd+Shift+/- for vertical zoom, Cmd+0 resets both, Return zooms to fit, Cmd+K crops selection
+66. Loop-play — Shift+Space plays with looping (works with or without selection)
+67. Ruler label clamping — timeline ruler labels clamped to avoid clipping at panel edges
+68. Centralized theme system — `AppTheme` with `WaveformTheme`, `MinimapTheme`, `MeterTheme` sub-themes, all UI colors loaded from `~/.config/barber/theme.toml` with hex color serde. Writes defaults on first run. `WaveformTheme` moved from waveform.rs to theme.rs
+
 ## v0.2 Wishlist
 
 ### Editing

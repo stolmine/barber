@@ -1,4 +1,5 @@
 use crate::audio::levels::AudioLevels;
+use crate::theme::MeterTheme;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ToolbarAction {
@@ -101,7 +102,7 @@ pub const DB_TICKS: &[(f32, &str)] = &[
     (0.010, "-40"),
 ];
 
-pub fn meter_panel_ui(ui: &mut egui::Ui, levels: &AudioLevels) {
+pub fn meter_panel_ui(ui: &mut egui::Ui, levels: &AudioLevels, theme: &MeterTheme) {
     let full_height = ui.available_height();
     let (peak_l, peak_r) = levels.smoothed_peaks();
 
@@ -136,24 +137,24 @@ pub fn meter_panel_ui(ui: &mut egui::Ui, levels: &AudioLevels) {
                 egui::pos2(response.rect.min.x, notch_y),
                 egui::pos2(response.rect.max.x, notch_y),
             ],
-            egui::Stroke::new(1.0, egui::Color32::from_gray(140)),
+            egui::Stroke::new(1.0, theme.unity_notch),
         );
 
         ui.separator();
 
         // Meters + ruler
-        draw_vertical_meter(ui, peak_l, full_height);
-        draw_vertical_meter(ui, peak_r, full_height);
-        draw_db_ruler(ui, full_height);
+        draw_vertical_meter(ui, peak_l, full_height, theme);
+        draw_vertical_meter(ui, peak_r, full_height, theme);
+        draw_db_ruler(ui, full_height, theme);
     });
 }
 
-fn draw_vertical_meter(ui: &mut egui::Ui, level: f32, height: f32) {
+fn draw_vertical_meter(ui: &mut egui::Ui, level: f32, height: f32, theme: &MeterTheme) {
     let desired = egui::vec2(10.0, height);
     let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
     let painter = ui.painter_at(rect);
 
-    painter.rect_filled(rect, 1.0, egui::Color32::from_gray(30));
+    painter.rect_filled(rect, 1.0, theme.background);
 
     let clamped = level.clamp(0.0, 1.0);
     if clamped > 0.0 {
@@ -163,9 +164,9 @@ fn draw_vertical_meter(ui: &mut egui::Ui, level: f32, height: f32) {
             rect.max,
         );
 
-        let green = egui::Color32::from_rgb(80, 200, 80);
-        let yellow = egui::Color32::from_rgb(255, 200, 0);
-        let red = egui::Color32::from_rgb(255, 60, 60);
+        let green = theme.green;
+        let yellow = theme.yellow;
+        let red = theme.red;
 
         let thresh_yellow = rect.max.y - rect.height() * 0.7;
         let thresh_red = rect.max.y - rect.height() * 0.9;
@@ -214,13 +215,13 @@ const GAIN_TICKS: &[(f32, &str)] = &[
     (-24.0, "-24"),
 ];
 
-fn draw_gain_ruler(ui: &mut egui::Ui, height: f32) {
+fn draw_gain_ruler(ui: &mut egui::Ui, height: f32, theme: &MeterTheme) {
     let desired = egui::vec2(24.0, height);
     let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
     let painter = ui.painter_at(rect);
     let font = egui::FontId::monospace(8.0);
-    let color = egui::Color32::from_gray(130);
-    let tick_color = egui::Color32::from_gray(80);
+    let color = theme.ruler_text;
+    let tick_color = theme.ruler_tick;
     let half_line = 4.0;
 
     for &(db, label) in GAIN_TICKS {
@@ -241,7 +242,7 @@ fn draw_gain_ruler(ui: &mut egui::Ui, height: f32) {
     }
 }
 
-pub fn gain_panel_ui(ui: &mut egui::Ui, gain_db: &mut f32) -> (bool, bool) {
+pub fn gain_panel_ui(ui: &mut egui::Ui, gain_db: &mut f32, theme: &MeterTheme) -> (bool, bool) {
     let full_height = ui.available_height();
     let mut changed = false;
     let mut drag_stopped = false;
@@ -249,7 +250,7 @@ pub fn gain_panel_ui(ui: &mut egui::Ui, gain_db: &mut f32) -> (bool, bool) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
 
-        draw_gain_ruler(ui, full_height);
+        draw_gain_ruler(ui, full_height, theme);
 
         let response = ui.scope(|ui| {
             ui.spacing_mut().slider_width = full_height;
@@ -274,7 +275,7 @@ pub fn gain_panel_ui(ui: &mut egui::Ui, gain_db: &mut f32) -> (bool, bool) {
                 egui::pos2(response.rect.min.x, notch_y),
                 egui::pos2(response.rect.max.x, notch_y),
             ],
-            egui::Stroke::new(1.0, egui::Color32::from_gray(140)),
+            egui::Stroke::new(1.0, theme.unity_notch),
         );
 
         let dbl = ui.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
@@ -287,13 +288,12 @@ pub fn gain_panel_ui(ui: &mut egui::Ui, gain_db: &mut f32) -> (bool, bool) {
     (changed, drag_stopped)
 }
 
-fn draw_db_ruler(ui: &mut egui::Ui, height: f32) {
+fn draw_db_ruler(ui: &mut egui::Ui, height: f32, theme: &MeterTheme) {
     let desired = egui::vec2(24.0, height);
     let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
     let painter = ui.painter_at(rect);
 
     let font = egui::FontId::monospace(8.0);
-    let color = egui::Color32::from_gray(120);
     let half_line = 4.0;
 
     for &(linear, label) in DB_TICKS {
@@ -302,14 +302,14 @@ fn draw_db_ruler(ui: &mut egui::Ui, height: f32) {
         let label_y = y.clamp(rect.min.y + half_line, rect.max.y - half_line);
         painter.line_segment(
             [egui::pos2(rect.min.x, y), egui::pos2(rect.min.x + 3.0, y)],
-            egui::Stroke::new(1.0, color),
+            egui::Stroke::new(1.0, theme.ruler_tick),
         );
         painter.text(
             egui::pos2(rect.min.x + 5.0, label_y),
             egui::Align2::LEFT_CENTER,
             label,
             font.clone(),
-            color,
+            theme.ruler_text,
         );
     }
 }

@@ -1,12 +1,12 @@
-use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+use egui::{Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
 use crate::audio::peaks::PeakData;
 use crate::edit::EditList;
+use crate::theme::MinimapTheme;
 use crate::ui::waveform::WaveformState;
 
 const MINIMAP_HEIGHT: f32 = 32.0;
 const EDGE_HOTZONE: f32 = 5.0;
-const DIM_COLOR: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 120);
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum MinimapDrag {
@@ -22,6 +22,7 @@ pub fn minimap_ui(
     edit_list: &EditList,
     state: &mut WaveformState,
     drag: &mut MinimapDrag,
+    theme: &MinimapTheme,
 ) {
     let available_width = ui.available_width();
     let desired = Vec2::new(available_width, MINIMAP_HEIGHT);
@@ -30,11 +31,11 @@ pub fn minimap_ui(
 
     let total = edit_list.total_frames();
     if total == 0 || rect.width() <= 0.0 {
-        painter.rect_filled(rect, 0.0, Color32::from_gray(20));
+        painter.rect_filled(rect, 0.0, theme.background);
         return;
     }
 
-    painter.rect_filled(rect, 0.0, Color32::from_rgb(16, 16, 20));
+    painter.rect_filled(rect, 0.0, theme.background);
 
     // Draw full waveform compressed to fit
     let overview_zoom = total as f64 / rect.width() as f64;
@@ -63,7 +64,7 @@ pub fn minimap_ui(
             let y_bot = (center_y - lo * half_h).min(ch_top + channel_height);
             painter.line_segment(
                 [Pos2::new(x, y_top), Pos2::new(x, y_bot)],
-                Stroke::new(1.0, Color32::from_rgb(70, 130, 190)),
+                Stroke::new(1.0, theme.waveform),
             );
         }
     }
@@ -78,13 +79,13 @@ pub fn minimap_ui(
     if vp_left > rect.left() {
         painter.rect_filled(
             Rect::from_min_max(rect.min, Pos2::new(vp_left, rect.max.y)),
-            0.0, DIM_COLOR,
+            0.0, theme.dim_overlay,
         );
     }
     if vp_right < rect.right() {
         painter.rect_filled(
             Rect::from_min_max(Pos2::new(vp_right, rect.min.y), rect.max),
-            0.0, DIM_COLOR,
+            0.0, theme.dim_overlay,
         );
     }
 
@@ -92,14 +93,14 @@ pub fn minimap_ui(
         Pos2::new(vp_left, rect.top()),
         Pos2::new(vp_right, rect.bottom()),
     );
-    painter.rect_stroke(vp_rect, 0.0, Stroke::new(1.0, Color32::from_gray(200)), egui::StrokeKind::Inside);
+    painter.rect_stroke(vp_rect, 0.0, Stroke::new(1.0, theme.viewport_stroke), egui::StrokeKind::Inside);
 
     // Playhead
     let ph_x = rect.left() + (state.playhead as f64 * fpx) as f32;
     if ph_x >= rect.left() && ph_x <= rect.right() {
         painter.line_segment(
             [Pos2::new(ph_x, rect.top()), Pos2::new(ph_x, rect.bottom())],
-            Stroke::new(1.0, Color32::from_rgb(255, 220, 60)),
+            Stroke::new(1.0, theme.playhead),
         );
     }
 

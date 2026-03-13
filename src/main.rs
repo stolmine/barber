@@ -3,6 +3,7 @@ mod audio;
 mod edit;
 mod history;
 mod keybinds;
+mod theme;
 mod ui;
 
 fn main() -> eframe::Result<()> {

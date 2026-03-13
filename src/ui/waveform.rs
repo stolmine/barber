@@ -3,48 +3,8 @@ use egui::epaint::{PathShape, PathStroke};
 
 use crate::audio::peaks::PeakData;
 use crate::edit::EditList;
+use crate::theme::WaveformTheme;
 use crate::ui::toolbar::ToolbarAction;
-
-pub struct WaveformTheme {
-    pub background: Color32,
-    pub center_line: Color32,
-    pub channel_separator: Color32,
-    pub waveform_fill: Color32,
-    pub waveform_stroke: Color32,
-    pub waveform_stroke_width: f32,
-    pub selection_fill: Color32,
-    pub selection_stroke: Color32,
-    pub playhead: Color32,
-    pub phantom_bg: Color32,
-    pub phantom_wave: Color32,
-    pub in_point: Color32,
-    pub out_point: Color32,
-    pub ruler_text: Color32,
-    pub ruler_tick: Color32,
-}
-
-impl Default for WaveformTheme {
-    fn default() -> Self {
-        let wave = Color32::from_rgb(100, 180, 255);
-        Self {
-            background: Color32::from_rgb(20, 20, 24),
-            center_line: Color32::from_rgb(50, 50, 60),
-            channel_separator: Color32::from_rgb(70, 70, 80),
-            waveform_fill: wave,
-            waveform_stroke: wave,
-            waveform_stroke_width: 1.0,
-            selection_fill: Color32::from_rgba_unmultiplied(100, 180, 255, 40),
-            selection_stroke: Color32::from_rgba_unmultiplied(100, 180, 255, 120),
-            playhead: Color32::from_rgb(255, 220, 60),
-            phantom_bg: Color32::from_rgba_unmultiplied(255, 220, 60, 50),
-            phantom_wave: Color32::from_rgb(255, 120, 0),
-            in_point: Color32::from_rgb(80, 220, 100),
-            out_point: Color32::from_rgb(220, 80, 80),
-            ruler_text: Color32::from_rgb(160, 160, 170),
-            ruler_tick: Color32::from_rgb(80, 80, 90),
-        }
-    }
-}
 
 pub struct WaveformState {
     pub scroll_offset: f64,
