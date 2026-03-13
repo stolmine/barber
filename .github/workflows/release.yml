@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Create app bundle
+        run: |
+          mkdir -p Barber.app/Contents/MacOS
+          mkdir -p Barber.app/Contents/Resources
+          cp target/release/barber Barber.app/Contents/MacOS/barber
+          cat > Barber.app/Contents/Info.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>Barber</string>
+            <key>CFBundleDisplayName</key>
+            <string>Barber</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.barber.app</string>
+            <key>CFBundleVersion</key>
+            <string>${GITHUB_REF_NAME#v}</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${GITHUB_REF_NAME#v}</string>
+            <key>CFBundleExecutable</key>
+            <string>barber</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>NSMicrophoneUsageDescription</key>
+            <string>Barber needs microphone access for audio recording.</string>
+            <key>CFBundleDocumentTypes</key>
+            <array>
+              <dict>
+                <key>CFBundleTypeName</key>
+                <string>Audio File</string>
+                <key>CFBundleTypeRole</key>
+                <string>Editor</string>
+                <key>LSItemContentTypes</key>
+                <array>
+                  <string>public.audio</string>
+                </array>
+                <key>CFBundleTypeExtensions</key>
+                <array>
+                  <string>wav</string>
+                  <string>aiff</string>
+                  <string>aif</string>
+                  <string>mp3</string>
+                  <string>flac</string>
+                  <string>m4a</string>
+                </array>
+              </dict>
+            </array>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Ad hoc code sign
+        run: codesign --force --deep --sign - Barber.app
+
+      - name: Zip app bundle
+        run: zip -r Barber-macos.zip Barber.app
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Barber-macos.zip

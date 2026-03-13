@@ -679,7 +679,7 @@ impl BarberApp {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let file = rfd::FileDialog::new()
-                .add_filter("Audio", &["wav", "aiff", "aif", "mp3", "flac", "m4a", "ogg"])
+                .add_filter("Audio", &["wav", "aiff", "aif", "mp3", "flac", "m4a"])
                 .pick_file();
             let _ = tx.send(file);
         });
