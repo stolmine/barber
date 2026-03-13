@@ -144,15 +144,7 @@ Export -------------------------------------+
 ## v0.2 Wishlist
 
 ### Editing
-- **Selection-scoped adjustments:** When a region is selected, apply pitch/speed, reverse, or amplitude changes to only that region (hotkeys or floating controls à la Adobe Audition)
-- **Individual L/R channel editing:** Edit left/right channels independently on stereo files. toggle-able
-- **Apply fades in or out, with selectable curves:** the question will be how to select curves
-
-### Playback
-- **Pitch-preserving time stretch:** Variable playback rate without pitch change (phase vocoder or WSOLA)
-
-### Interaction
-- **BPM detection and beat grid:** Adjustable beat grid for quantized edits with quantized selection on hotkey/toggle
+- **Individual L/R channel editing:** Edit left/right channels independently on stereo files, toggle-able
 
 ### Status Bar
 - **Zoom percentages:** Show X (horizontal) and Y (vertical) zoom levels in status bar
@@ -165,7 +157,6 @@ Export -------------------------------------+
 
 ### Infrastructure
 - Async file loading with progress bar
-- Lock-free audio thread communication
 - Cross-platform audio via `cpal`
 - 24-bit and 32-bit float WAV export
 - AIFF / OGG / MP3 export

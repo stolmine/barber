@@ -6,8 +6,8 @@ pub fn menu_bar_ui(
     keybinds: &Keybinds,
     has_file: bool,
     has_selection: bool,
-    can_undo: bool,
-    can_redo: bool,
+    undo_label: Option<&str>,
+    redo_label: Option<&str>,
     has_clipboard: bool,
 ) -> Option<ToolbarAction> {
     let mut action = None;
@@ -21,8 +21,10 @@ pub fn menu_bar_ui(
         });
 
         ui.menu_button("Edit", |ui| {
-            menu_item(ui, keybinds, "Undo", "Undo", can_undo, &mut action);
-            menu_item(ui, keybinds, "Redo", "Redo", can_redo, &mut action);
+            let undo_text = undo_label.map(|l| format!("Undo {}", l)).unwrap_or_else(|| "Undo".to_string());
+            menu_item(ui, keybinds, "Undo", &undo_text, undo_label.is_some(), &mut action);
+            let redo_text = redo_label.map(|l| format!("Redo {}", l)).unwrap_or_else(|| "Redo".to_string());
+            menu_item(ui, keybinds, "Redo", &redo_text, redo_label.is_some(), &mut action);
             ui.separator();
             menu_item(ui, keybinds, "SelectAll", "Select All", has_file, &mut action);
             menu_item(ui, keybinds, "Cut", "Cut", has_selection, &mut action);

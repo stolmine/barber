@@ -194,7 +194,7 @@ impl eframe::App for BarberApp {
                         if ui.button("OK").clicked() {
                             let speed = self.speed_pct / 100.0;
                             if let Some(edit_list) = &mut self.edit_list {
-                                self.history.push(edit_list.clone());
+                                self.history.push("Change Speed", edit_list.clone());
                                 let total = edit_list.total_frames();
                                 let (start, end) = self.waveform_state.selection
                                     .unwrap_or((0, total));
@@ -301,7 +301,9 @@ impl eframe::App for BarberApp {
         let has_clipboard = self.clipboard.is_some();
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
-            action = menu_bar_ui(ui, &self.keybinds, has_file, has_selection, can_undo, can_redo, has_clipboard);
+            let undo_label = self.history.undo_label();
+            let redo_label = self.history.redo_label();
+            action = menu_bar_ui(ui, &self.keybinds, has_file, has_selection, undo_label, redo_label, has_clipboard);
         });
 
         egui::TopBottomPanel::top("transport").show(ctx, |ui| {
@@ -357,6 +359,16 @@ impl eframe::App for BarberApp {
                     if !held.is_empty() {
                         ui.label(&held);
                     }
+                    if let Some(el) = &self.edit_list {
+                        let total = el.total_frames();
+                        let width = self.waveform_state.last_width as f64;
+                        if width > 0.0 && total > 0 {
+                            let fit_zoom = total as f64 / width;
+                            let h_pct = (fit_zoom / self.waveform_state.zoom * 100.0).round();
+                            let v_pct = (self.waveform_state.vertical_zoom * 100.0).round();
+                            ui.label(format!("H:{:.0}% V:{:.0}%", h_pct, v_pct));
+                        }
+                    }
                 });
             });
         });
@@ -389,7 +401,7 @@ impl eframe::App for BarberApp {
                     }
                     let (changed, released) = gain_panel_ui(ui, &mut self.gain_db);
                     if changed && !self.gain_dragging {
-                        self.history.push(edit_list.clone());
+                        self.history.push("Gain", edit_list.clone());
                         self.gain_db_start = self.gain_db;
                         self.gain_dragging = true;
                     }
@@ -714,7 +726,7 @@ impl BarberApp {
     fn gap_delete(&mut self) {
         let Some((start, end)) = self.waveform_state.selection else { return };
         if let Some(el) = &self.edit_list {
-            self.history.push(el.clone());
+            self.history.push("Gap Delete", el.clone());
         }
         let old_total = self.edit_list.as_ref().map(|el| el.total_frames()).unwrap_or(0);
         if let Some(el) = &mut self.edit_list {
@@ -727,7 +739,7 @@ impl BarberApp {
     fn ripple_delete(&mut self) {
         let Some((start, end)) = self.waveform_state.selection else { return };
         if let Some(el) = &self.edit_list {
-            self.history.push(el.clone());
+            self.history.push("Ripple Delete", el.clone());
         }
         let old_total = self.edit_list.as_ref().map(|el| el.total_frames()).unwrap_or(0);
         if let Some(el) = &mut self.edit_list {
@@ -747,7 +759,7 @@ impl BarberApp {
     fn crop(&mut self) {
         let Some((start, end)) = self.waveform_state.selection else { return };
         if let Some(el) = &self.edit_list {
-            self.history.push(el.clone());
+            self.history.push("Crop", el.clone());
         }
         let old_total = self.edit_list.as_ref().map(|el| el.total_frames()).unwrap_or(0);
         if let Some(el) = &mut self.edit_list {
@@ -773,7 +785,7 @@ impl BarberApp {
     fn paste(&mut self) {
         let Some(regions) = self.clipboard.clone() else { return };
         if let Some(el) = &self.edit_list {
-            self.history.push(el.clone());
+            self.history.push("Paste", el.clone());
         }
         let old_total = self.edit_list.as_ref().map(|el| el.total_frames()).unwrap_or(0);
         if let Some(el) = &mut self.edit_list {
@@ -786,7 +798,7 @@ impl BarberApp {
     fn duplicate(&mut self) {
         let Some((start, end)) = self.waveform_state.selection else { return };
         if let Some(el) = &self.edit_list {
-            self.history.push(el.clone());
+            self.history.push("Duplicate", el.clone());
         }
         let old_total = self.edit_list.as_ref().map(|el| el.total_frames()).unwrap_or(0);
         if let Some(el) = &mut self.edit_list {
@@ -807,6 +819,7 @@ impl BarberApp {
                 self.waveform_state.playhead = self.waveform_state.playhead.min(
                     self.edit_list.as_ref().map_or(0, |el| el.total_frames()),
                 );
+                self.last_action = self.history.redo_label().map(|l| format!("Undo {}", l));
                 self.post_edit(old_total);
             }
         }
@@ -821,6 +834,7 @@ impl BarberApp {
                 self.waveform_state.playhead = self.waveform_state.playhead.min(
                     self.edit_list.as_ref().map_or(0, |el| el.total_frames()),
                 );
+                self.last_action = self.history.undo_label().map(|l| format!("Redo {}", l));
                 self.post_edit(old_total);
             }
         }
@@ -847,7 +861,7 @@ impl BarberApp {
         let Some(el) = &self.edit_list else { return };
         let (start, end) = self.waveform_state.selection.unwrap_or((0, el.total_frames()));
         if start >= end { return; }
-        self.history.push(el.clone());
+        self.history.push("Reverse", el.clone());
         if let Some(el) = &mut self.edit_list {
             el.reverse_selection(start, end);
         }
@@ -867,7 +881,7 @@ impl BarberApp {
             log::debug!("normalize: empty range, bailing");
             return;
         }
-        self.history.push(el.clone());
+        self.history.push("Normalize", el.clone());
         let mut peak: f32 = 0.0;
         let mut frame_count: usize = 0;
         for maybe_frame in el.iter_source_frames(start, end - start) {
@@ -898,7 +912,7 @@ impl BarberApp {
         let selection = self.waveform_state.selection;
         let (start, end) = selection.unwrap_or((0, el.total_frames()));
         if start >= end { return; }
-        self.history.push(el.clone());
+        self.history.push("Remove DC", el.clone());
         let mut sum: f64 = 0.0;
         let mut count: u64 = 0;
         for maybe_frame in el.iter_source_frames(start, end - start) {
@@ -927,8 +941,14 @@ impl BarberApp {
 
     fn apply_fade(&mut self, is_fade_in: bool, curve: FadeCurve) {
         let Some((start, end)) = self.waveform_state.selection else { return };
+        let fade_label = format!("{} ({})", if is_fade_in { "Fade In" } else { "Fade Out" }, match curve {
+            FadeCurve::Linear => "Linear",
+            FadeCurve::Exponential => "Exponential",
+            FadeCurve::Logarithmic => "Logarithmic",
+            FadeCurve::SCurve => "S-Curve",
+        });
         if let Some(el) = &self.edit_list {
-            self.history.push(el.clone());
+            self.history.push(fade_label, el.clone());
         }
         if let Some(el) = &mut self.edit_list {
             if is_fade_in { el.apply_fade_in(start, end, curve); }

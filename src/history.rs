@@ -1,8 +1,8 @@
 use crate::edit::EditList;
 
 pub struct EditHistory {
-    undo_stack: Vec<EditList>,
-    redo_stack: Vec<EditList>,
+    undo_stack: Vec<(String, EditList)>,
+    redo_stack: Vec<(String, EditList)>,
 }
 
 impl EditHistory {
@@ -13,25 +13,33 @@ impl EditHistory {
         }
     }
 
-    pub fn push(&mut self, state: EditList) {
-        self.undo_stack.push(state);
+    pub fn push(&mut self, label: impl Into<String>, state: EditList) {
+        self.undo_stack.push((label.into(), state));
         self.redo_stack.clear();
     }
 
     pub fn undo(&mut self, current: EditList) -> Option<EditList> {
-        let prev = self.undo_stack.pop()?;
-        self.redo_stack.push(current);
+        let (label, prev) = self.undo_stack.pop()?;
+        self.redo_stack.push((label, current));
         Some(prev)
     }
 
     pub fn redo(&mut self, current: EditList) -> Option<EditList> {
-        let next = self.redo_stack.pop()?;
-        self.undo_stack.push(current);
+        let (label, next) = self.redo_stack.pop()?;
+        self.undo_stack.push((label, current));
         Some(next)
     }
 
     pub fn peek_undo(&self) -> Option<&EditList> {
-        self.undo_stack.last()
+        self.undo_stack.last().map(|(_, el)| el)
+    }
+
+    pub fn undo_label(&self) -> Option<&str> {
+        self.undo_stack.last().map(|(l, _)| l.as_str())
+    }
+
+    pub fn redo_label(&self) -> Option<&str> {
+        self.redo_stack.last().map(|(l, _)| l.as_str())
     }
 
     pub fn can_undo(&self) -> bool {
