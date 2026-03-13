@@ -17,7 +17,11 @@ A lightweight, open-source audio editor built in Rust with egui.
 
 Download `Barber-macos.zip` from [Releases](../../releases), unzip, and drag `Barber.app` to Applications.
 
-Since the app is ad-hoc signed, on first launch you may need to right-click and choose "Open" to bypass Gatekeeper.
+Since the app is ad-hoc signed, you'll need to remove the quarantine attribute after moving it to Applications:
+
+```sh
+sudo xattr -r -d com.apple.quarantine /Applications/Barber.app
+```
 
 ## Building from source
 
