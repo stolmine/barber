@@ -10,6 +10,7 @@ use crate::edit::{EditList, Region};
 use crate::history::EditHistory;
 use crate::keybinds::Keybinds;
 use crate::ui::menu::menu_bar_ui;
+use crate::ui::minimap::{minimap_ui, MinimapDrag};
 use crate::ui::toolbar::{meter_panel_ui, toolbar_ui, ToolbarAction};
 use crate::ui::waveform::{WaveformState, WaveformWidget};
 
@@ -32,6 +33,7 @@ pub struct BarberApp {
     dirty: bool,
     show_quit_dialog: bool,
     prev_modifiers: egui::Modifiers,
+    minimap_drag: MinimapDrag,
 }
 
 impl Default for BarberApp {
@@ -55,6 +57,7 @@ impl Default for BarberApp {
             dirty: false,
             show_quit_dialog: false,
             prev_modifiers: egui::Modifiers::NONE,
+            minimap_drag: MinimapDrag::None,
         }
     }
 }
@@ -196,6 +199,14 @@ impl eframe::App for BarberApp {
                 });
             });
         });
+
+        egui::TopBottomPanel::bottom("minimap")
+            .exact_height(32.0)
+            .show(ctx, |ui| {
+                if let (Some(peaks), Some(edit_list)) = (&self.peak_data, &self.edit_list) {
+                    minimap_ui(ui, peaks, edit_list, &mut self.waveform_state, &mut self.minimap_drag);
+                }
+            });
 
         egui::SidePanel::right("meter_panel")
             .resizable(false)

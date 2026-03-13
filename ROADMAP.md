@@ -126,6 +126,9 @@ Export -------------------------------------+
 50. Volume keybinds — Cmd+Up/Down adjusts playback volume in 0.05 steps
 51. Live navigation during playback — GoToStart, GoToEnd, GoToIn, GoToOut, NudgeLeft, NudgeRight all seek the engine while playing
 
+### v0.2.0
+52. Minimap — Ableton-style arrangement overview bar above status bar. Full waveform always visible, viewport rectangle with dimmed outside regions. Click outside to jump, drag inside to pan, vertical drag to zoom, drag edges to resize view, double-click to zoom-to-fit. Press-frame hit detection for reliable edge grab.
+
 ## v0.2 Wishlist
 
 ### Editing
@@ -150,7 +153,6 @@ Export -------------------------------------+
 - **Custom styling for in/out points:** Current dashed lines are hard to see — need better visual treatment (thicker, labels, triangular markers, or glow). Add shading/tint of the region between in and out points when they are set off defaults
 - **Sexier UI:** Better colors, typography, spacing, custom styling
 - **Tabbed concurrent projects:** Open multiple files, splice material between them
-- **Minimap:** adaptive overview of waveform when zoomed
 
 ### Infrastructure
 - Async file loading with progress bar
