@@ -249,7 +249,7 @@ impl EditList {
         self.regions = new_regions;
     }
 
-    fn ripple_delete_inner(&mut self, start: usize, end: usize, apply_boundary: bool) {
+    pub(crate) fn ripple_delete_inner(&mut self, start: usize, end: usize, apply_boundary: bool) {
         if start >= end {
             return;
         }
@@ -312,7 +312,7 @@ impl EditList {
         result
     }
 
-    fn insert_inner(&mut self, position: usize, regions: &[Region], apply_boundary: bool) {
+    pub(crate) fn insert_inner(&mut self, position: usize, regions: &[Region], apply_boundary: bool) {
         if regions.is_empty() {
             return;
         }
@@ -439,6 +439,26 @@ impl EditList {
             }
             offset = r_end;
         }
+    }
+
+    pub fn average_gain(&self, start: usize, end: usize) -> f32 {
+        if start >= end { return 1.0; }
+        let regions = self.extract_regions(start, end);
+        if regions.is_empty() { return 1.0; }
+        let total_len: usize = regions.iter().map(|r| r.len()).sum();
+        if total_len == 0 { return 1.0; }
+        let weighted_sum: f64 = regions.iter().map(|r| r.gain as f64 * r.len() as f64).sum();
+        (weighted_sum / total_len as f64) as f32
+    }
+
+    pub fn set_gain_absolute(&mut self, start: usize, end: usize, target_gain: f32) {
+        if start >= end { return; }
+        let mut extracted = self.extract_regions(start, end);
+        for region in &mut extracted {
+            region.gain = target_gain;
+        }
+        self.ripple_delete_inner(start, end, false);
+        self.insert_inner(start, &extracted, false);
     }
 
     pub fn set_gain_range(&mut self, start: usize, end: usize, gain_factor: f32) {

@@ -11,7 +11,7 @@ use crate::history::EditHistory;
 use crate::keybinds::Keybinds;
 use crate::ui::menu::menu_bar_ui;
 use crate::ui::minimap::{minimap_ui, MinimapDrag};
-use crate::ui::toolbar::{meter_panel_ui, toolbar_ui, ToolbarAction};
+use crate::ui::toolbar::{gain_panel_ui, meter_panel_ui, toolbar_ui, ToolbarAction};
 use crate::ui::waveform::{WaveformState, WaveformTheme, WaveformWidget};
 
 pub struct BarberApp {
@@ -43,6 +43,9 @@ pub struct BarberApp {
     pending_file_op: Option<std::sync::mpsc::Receiver<Option<PathBuf>>>,
     pending_export_op: Option<std::sync::mpsc::Receiver<Option<PathBuf>>>,
     waveform_theme: WaveformTheme,
+    gain_db: f32,
+    gain_db_start: f32,
+    gain_dragging: bool,
 }
 
 impl Default for BarberApp {
@@ -76,6 +79,9 @@ impl Default for BarberApp {
             pending_file_op: None,
             pending_export_op: None,
             waveform_theme: WaveformTheme::default(),
+            gain_db: 0.0,
+            gain_db_start: 0.0,
+            gain_dragging: false,
         }
     }
 }
@@ -368,6 +374,48 @@ impl eframe::App for BarberApp {
             .exact_width(94.0)
             .show(ctx, |ui| {
                 meter_panel_ui(ui, &self.audio_levels);
+            });
+
+        egui::SidePanel::left("gain_panel")
+            .resizable(false)
+            .exact_width(60.0)
+            .show(ctx, |ui| {
+                if let Some(edit_list) = &mut self.edit_list {
+                    if !self.gain_dragging {
+                        let total = edit_list.total_frames();
+                        let (start, end) = self.waveform_state.selection.unwrap_or((0, total));
+                        let avg_gain = edit_list.average_gain(start, end);
+                        self.gain_db = 20.0 * avg_gain.log10();
+                    }
+                    let (changed, released) = gain_panel_ui(ui, &mut self.gain_db);
+                    if changed && !self.gain_dragging {
+                        self.history.push(edit_list.clone());
+                        self.gain_db_start = self.gain_db;
+                        self.gain_dragging = true;
+                    }
+                    if changed {
+                        if let Some(snapshot) = self.history.peek_undo() {
+                            let db_delta = self.gain_db - self.gain_db_start;
+                            let gain_factor = 10.0f32.powf(db_delta / 20.0);
+                            let total = snapshot.total_frames();
+                            let (start, end) = self.waveform_state.selection.unwrap_or((0, total));
+                            let mut adjusted = snapshot.extract_regions(start, end);
+                            for region in &mut adjusted {
+                                region.gain *= gain_factor;
+                            }
+                            edit_list.ripple_delete_inner(start, end, false);
+                            edit_list.insert_inner(start, &adjusted, false);
+                            self.dirty = true;
+                        }
+                    }
+                    if released && self.gain_dragging {
+                        if let Some(engine) = &self.playback_engine {
+                            engine.set_edit_list(edit_list.clone());
+                        }
+                        self.last_action = Some(format!("Gain {:.1} dB", self.gain_db));
+                        self.gain_dragging = false;
+                    }
+                }
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {

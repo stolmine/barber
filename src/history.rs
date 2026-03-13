@@ -30,6 +30,10 @@ impl EditHistory {
         Some(next)
     }
 
+    pub fn peek_undo(&self) -> Option<&EditList> {
+        self.undo_stack.last()
+    }
+
     pub fn can_undo(&self) -> bool {
         !self.undo_stack.is_empty()
     }

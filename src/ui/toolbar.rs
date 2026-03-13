@@ -202,6 +202,89 @@ fn draw_vertical_meter(ui: &mut egui::Ui, level: f32, height: f32) {
     }
 }
 
+const GAIN_TICKS: &[(f32, &str)] = &[
+    (24.0, "+24"),
+    (18.0, "+18"),
+    (12.0, "+12"),
+    (6.0, "+6"),
+    (0.0, "0"),
+    (-6.0, "-6"),
+    (-12.0, "-12"),
+    (-18.0, "-18"),
+    (-24.0, "-24"),
+];
+
+fn draw_gain_ruler(ui: &mut egui::Ui, height: f32) {
+    let desired = egui::vec2(24.0, height);
+    let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    let font = egui::FontId::monospace(8.0);
+    let color = egui::Color32::from_gray(130);
+    let tick_color = egui::Color32::from_gray(80);
+
+    for &(db, label) in GAIN_TICKS {
+        let frac = (db + 24.0) / 48.0;
+        let y = rect.max.y - rect.height() * frac;
+        painter.line_segment(
+            [egui::pos2(rect.max.x - 4.0, y), egui::pos2(rect.max.x, y)],
+            egui::Stroke::new(1.0, tick_color),
+        );
+        painter.text(
+            egui::pos2(rect.min.x, y),
+            egui::Align2::LEFT_CENTER,
+            label,
+            font.clone(),
+            color,
+        );
+    }
+}
+
+pub fn gain_panel_ui(ui: &mut egui::Ui, gain_db: &mut f32) -> (bool, bool) {
+    let full_height = ui.available_height();
+    let mut changed = false;
+    let mut drag_stopped = false;
+
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+
+        draw_gain_ruler(ui, full_height);
+
+        let response = ui.scope(|ui| {
+            ui.spacing_mut().slider_width = full_height;
+            let slider = egui::Slider::new(gain_db, -24.0..=24.0)
+                .show_value(false)
+                .vertical()
+                .clamping(egui::SliderClamping::Always);
+            ui.add(slider)
+        }).inner;
+
+        if response.changed() {
+            changed = true;
+        }
+        if response.drag_stopped() {
+            drag_stopped = true;
+        }
+
+        let unity_frac = 24.0 / 48.0;
+        let notch_y = response.rect.max.y - response.rect.height() * unity_frac;
+        ui.painter().line_segment(
+            [
+                egui::pos2(response.rect.min.x, notch_y),
+                egui::pos2(response.rect.max.x, notch_y),
+            ],
+            egui::Stroke::new(1.0, egui::Color32::from_gray(140)),
+        );
+
+        let dbl = ui.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
+        if dbl && response.rect.contains(ui.input(|i| i.pointer.interact_pos().unwrap_or_default())) {
+            *gain_db = 0.0;
+            changed = true;
+        }
+    });
+
+    (changed, drag_stopped)
+}
+
 fn draw_db_ruler(ui: &mut egui::Ui, height: f32) {
     let desired = egui::vec2(24.0, height);
     let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());

@@ -99,12 +99,12 @@ A simple, fast, lightweight audio editor built from purely open source Rust comp
 - Computed once after decode, never recomputed after edits
 
 **EditList** (`edit.rs`):
-- `regions: Vec<Region>` where `Region { kind, gain, dc_offset, fade_in, fade_out, fade_in_curve, fade_out_curve }`
+- `regions: Vec<Region>` where `Region { kind, gain, dc_offset, speed, fade_in, fade_out, fade_in_curve, fade_out_curve }`
 - Non-destructive: original AudioBuffer is never modified
-- `ripple_delete(start, end)` / `insert(position, regions)` — auto-apply boundary fades at splice points
-- `ripple_delete_inner` / `insert_inner` — variants with `apply_boundary` flag for fade operations that must preserve user-set fades
-- `apply_fade_in` / `apply_fade_out` — set user fades without boundary fade interference
-- `resolve(edit_frame) -> source_frame` — maps edit-space to source-space
+- `len()` returns edit-space length (source_len / speed), `source_len()` returns raw source frames
+- `resolve(edit_frame)` / `resolve_exact(edit_frame, frac)` — maps edit-space to source-space with speed scaling
+- `ripple_delete` / `insert` — auto-apply boundary fades; `_inner` variants skip fades
+- `apply_speed_range` / `set_gain_absolute` / `average_gain` — per-region speed and gain operations
 
 ### Dependency Graph
 
@@ -138,6 +138,8 @@ Export -------------------------------------+
 57. Trackpad gestures — native macOS pinch-to-zoom (horizontal) via `InputState::zoom_delta()`, Shift+pinch for vertical zoom. Two-finger scroll for horizontal pan
 58. Async file picker — `rfd::FileDialog` runs on background thread via mpsc channel, no longer blocks UI
 59. Waveform theming — `WaveformTheme` struct with all 15 waveform colors as named fields, passed through to all draw functions. Stroke width/color configurable, defaults to matching fill
+60. Variable speed/pitch — per-region `speed` field on Region, Cmd+Shift+R opens speed dialog with percentage and semitone+cents (live-linked), preview plays selection at speed, OK applies as undoable edit that expands/contracts timeline. Selectable interpolation (Nearest/Linear/Cubic Hermite) via lock-free atomic
+61. Gain fader — left side panel with dB ruler (-24 to +24), persistent vertical fader reflecting selection's current gain. Drag applies relative gain (preserves per-region balance), undo snapshot on drag start, engine sync on release. Double-click resets to 0dB
 
 ## v0.2 Wishlist
 
@@ -146,11 +148,8 @@ Export -------------------------------------+
 - **Individual L/R channel editing:** Edit left/right channels independently on stereo files. toggle-able
 - **Apply fades in or out, with selectable curves:** the question will be how to select curves
 
-### Waveform Display
-- **Amplitude control:** Gain adjustment with live waveform preview
-
 ### Playback
-- **Speed/pitch control:** Variable playback rate with optional pitch preservation
+- **Pitch-preserving time stretch:** Variable playback rate without pitch change (phase vocoder or WSOLA)
 
 ### Interaction
 - **BPM detection and beat grid:** Adjustable beat grid for quantized edits with quantized selection on hotkey/toggle
