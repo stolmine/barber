@@ -53,6 +53,7 @@ All keybinds are customizable via config (see below). Defaults:
 | Stop | `Esc` |
 | Loop | `L` |
 | Follow Playhead | `F` |
+| Snap to Zero Crossing | `S` |
 | Undo / Redo | `Cmd+Z` / `Cmd+Shift+Z` |
 | Cut / Copy / Paste | `Cmd+X` / `Cmd+C` / `Cmd+V` |
 | Duplicate | `Cmd+D` |
@@ -63,7 +64,8 @@ All keybinds are customizable via config (see below). Defaults:
 | Open / Export | `Cmd+O` / `Cmd+E` |
 | Zoom In / Out | `Cmd+=` / `Cmd+-` |
 | Zoom to Fit | `Return` |
-| Vertical Zoom | `Cmd+Shift+=` / `Cmd+Shift+-` / `Cmd+0` |
+| Vertical Zoom | `Cmd+Shift+=` / `Cmd+Shift+-`|
+| Reset Zoom | `Cmd+0` |
 | Volume Up / Down | `Cmd+Up` / `Cmd+Down` |
 | In / Out Points | `Shift+I` / `Shift+O` |
 | Go to In / Out | `I` / `O` |

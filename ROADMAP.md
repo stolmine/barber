@@ -150,6 +150,13 @@ Export -------------------------------------+
 67. Ruler label clamping — timeline ruler labels clamped to avoid clipping at panel edges
 68. Centralized theme system — `AppTheme` with `WaveformTheme`, `MinimapTheme`, `MeterTheme` sub-themes, all UI colors loaded from `~/.config/barber/theme.toml` with hex color serde. Writes defaults on first run. `WaveformTheme` moved from waveform.rs to theme.rs
 
+### v0.2.3
+69. Smooth meter decay — increased exponential decay factor from 0.85 to 0.93 for smoother, less choppy level meter falloff
+70. Snap-to-zero-crossing toggle — toolbar "Snap" button and `S` keybind to enable/disable automatic zero-crossing snapping on selection edges. On by default
+71. Shift+click selection expansion — shift+click extends existing selection to clicked point, anchoring from the nearest boundary. If no selection exists, extends from playhead
+72. Edge-drag auto-scroll — dragging a selection to the viewport edge automatically scrolls the view and continues extending the selection
+73. GitHub Actions release — automated macOS .app bundle build with ad-hoc code signing on tag push, uploaded as zip to GitHub Releases
+
 ## v0.2 Wishlist
 
 ### Editing

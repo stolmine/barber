@@ -98,6 +98,7 @@ pub struct WaveformWidget<'a> {
     has_clipboard: bool,
     audio_samples: Option<&'a [f32]>,
     theme: &'a WaveformTheme,
+    snap_to_zero: bool,
 }
 
 impl<'a> WaveformWidget<'a> {
@@ -110,8 +111,9 @@ impl<'a> WaveformWidget<'a> {
         has_clipboard: bool,
         audio_samples: Option<&'a [f32]>,
         theme: &'a WaveformTheme,
+        snap_to_zero: bool,
     ) -> Self {
-        Self { peaks, edit_list, state, sample_rate, action, has_clipboard, audio_samples, theme }
+        Self { peaks, edit_list, state, sample_rate, action, has_clipboard, audio_samples, theme, snap_to_zero }
     }
 }
 
@@ -136,7 +138,7 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
             self.state.needs_fit = false;
         }
 
-        handle_input(ui, &response, waveform_rect, self.state, total_frames, self.edit_list, self.audio_samples);
+        handle_input(ui, &response, waveform_rect, self.state, total_frames, self.edit_list, self.audio_samples, self.snap_to_zero);
 
         let has_sel = self.state.selection.is_some();
         let has_clip = self.has_clipboard;
@@ -305,6 +307,7 @@ fn handle_input(
     total_frames: usize,
     edit_list: &EditList,
     audio_samples: Option<&[f32]>,
+    snap_to_zero: bool,
 ) {
     if response.hovered() {
         let pinch_delta = ui.input(|i| i.zoom_delta());
@@ -355,17 +358,43 @@ fn handle_input(
     let secondary_down = ui.input(|i| i.pointer.secondary_down());
     let _primary_released = ui.input(|i| i.pointer.primary_released());
 
+    let modifiers = ui.input(|i| i.modifiers);
+
     if response.drag_started() && primary_down && !secondary_down {
         if let Some(pos) = response.interact_pointer_pos() {
             let frame = state.x_to_frame(pos.x, &rect);
-            state.drag_start = Some(frame);
-            state.selection = None;
+            if modifiers.shift {
+                let anchor = if let Some((sel_start, sel_end)) = state.selection {
+                    let mid = (sel_start + sel_end) / 2;
+                    if frame < mid { sel_end } else { sel_start }
+                } else {
+                    state.playhead
+                };
+                state.drag_start = Some(anchor);
+                let (a, b) = if anchor <= frame { (anchor, frame) } else { (frame, anchor) };
+                if b > a { state.selection = Some((a, b)); }
+            } else {
+                state.drag_start = Some(frame);
+                state.selection = None;
+            }
         }
     }
 
     if response.dragged() && state.drag_start.is_some() {
-        if let (Some(start), Some(pos)) = (state.drag_start, response.interact_pointer_pos()) {
-            let end = state.x_to_frame(pos.x, &rect);
+        if let Some(start) = state.drag_start {
+            let end = if let Some(pos) = response.interact_pointer_pos() {
+                let scroll_margin = 20.0;
+                let scroll_speed = 8.0 * state.zoom;
+                if pos.x < rect.left() + scroll_margin {
+                    state.scroll_offset = (state.scroll_offset - scroll_speed).max(0.0);
+                } else if pos.x > rect.right() - scroll_margin {
+                    let max_scroll = (total_frames as f64 - rect.width() as f64 * state.zoom).max(0.0);
+                    state.scroll_offset = (state.scroll_offset + scroll_speed).min(max_scroll);
+                }
+                state.x_to_frame(pos.x, &rect).min(total_frames)
+            } else {
+                start
+            };
             let (a, b) = if start <= end { (start, end) } else { (end, start) };
             if b > a {
                 state.selection = Some((a, b));
@@ -381,7 +410,7 @@ fn handle_input(
             }
         }
         state.drag_start = None;
-        if let (Some((start, end)), Some(samples)) = (state.selection, audio_samples) {
+        if let (Some((start, end)), Some(samples)) = (snap_to_zero.then_some(state.selection).flatten(), audio_samples) {
             let snapped_start = crate::audio::zero_crossing::find_nearest_zero_crossing(samples, edit_list, start, 512);
             let snapped_end = crate::audio::zero_crossing::find_nearest_zero_crossing(samples, edit_list, end, 512);
             if snapped_start < snapped_end {
@@ -394,9 +423,20 @@ fn handle_input(
         state.selection = Some((0, total_frames));
     } else if response.clicked_by(egui::PointerButton::Primary) && state.drag_start.is_none() {
         if let Some(pos) = response.interact_pointer_pos() {
-            let frame = state.x_to_frame(pos.x, &rect);
-            state.playhead = frame.min(total_frames);
-            state.selection = None;
+            let frame = state.x_to_frame(pos.x, &rect).min(total_frames);
+            if modifiers.shift {
+                let anchor = if let Some((sel_start, sel_end)) = state.selection {
+                    let mid = (sel_start + sel_end) / 2;
+                    if frame < mid { sel_end } else { sel_start }
+                } else {
+                    state.playhead
+                };
+                let (a, b) = if anchor <= frame { (anchor, frame) } else { (frame, anchor) };
+                if b > a { state.selection = Some((a, b)); }
+            } else {
+                state.playhead = frame;
+                state.selection = None;
+            }
         }
     }
 }

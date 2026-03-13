@@ -51,6 +51,7 @@ pub enum ToolbarAction {
     VerticalZoomOut,
     VerticalZoomReset,
     ChangeSpeed,
+    ToggleSnapZero,
 }
 
 impl ToolbarAction {
@@ -65,6 +66,7 @@ pub fn toolbar_ui(
     has_file: bool,
     is_loop: bool,
     is_following: bool,
+    snap_to_zero: bool,
 ) -> Option<ToolbarAction> {
     let mut action = None;
 
@@ -85,6 +87,10 @@ pub fn toolbar_ui(
 
         if ui.add_enabled(has_file, egui::SelectableLabel::new(is_following, "Follow")).clicked() {
             action = Some(ToolbarAction::ToggleFollow);
+        }
+
+        if ui.add_enabled(has_file, egui::SelectableLabel::new(snap_to_zero, "Snap")).clicked() {
+            action = Some(ToolbarAction::ToggleSnapZero);
         }
     });
 

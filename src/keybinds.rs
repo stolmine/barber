@@ -28,6 +28,7 @@ impl Default for Keybinds {
         b.insert("PlaySelection".into(), k(false, true, false, "Space"));
         b.insert("ToggleLoop".into(), k(false, false, false, "L"));
         b.insert("ToggleFollow".into(), k(false, false, false, "F"));
+        b.insert("ToggleSnapZero".into(), k(false, false, false, "S"));
         b.insert("GapDelete".into(), k(false, false, false, "Backspace"));
         b.insert("RippleDelete".into(), k(false, true, false, "Backspace"));
         b.insert("Undo".into(), k(true, false, false, "Z"));
@@ -131,6 +132,7 @@ impl Keybinds {
                 "PlaySelection" if has_file => Some(ToolbarAction::PlaySelection),
                 "ToggleLoop" => Some(ToolbarAction::ToggleLoop),
                 "ToggleFollow" => Some(ToolbarAction::ToggleFollow),
+                "ToggleSnapZero" => Some(ToolbarAction::ToggleSnapZero),
                 "GapDelete" if has_selection => Some(ToolbarAction::GapDelete),
                 "RippleDelete" if has_selection => Some(ToolbarAction::RippleDelete),
                 "Undo" if can_undo => Some(ToolbarAction::Undo),

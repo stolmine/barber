@@ -30,6 +30,7 @@ pub struct BarberApp {
     last_action: Option<String>,
     loop_enabled: bool,
     follow_playhead: bool,
+    snap_to_zero: bool,
     was_playing: bool,
     dirty: bool,
     show_quit_dialog: bool,
@@ -66,6 +67,7 @@ impl Default for BarberApp {
             last_action: None,
             loop_enabled: false,
             follow_playhead: false,
+            snap_to_zero: true,
             was_playing: false,
             dirty: false,
             show_quit_dialog: false,
@@ -308,7 +310,7 @@ impl eframe::App for BarberApp {
         });
 
         egui::TopBottomPanel::top("transport").show(ctx, |ui| {
-            let toolbar_action = toolbar_ui(ui, is_playing, has_file, self.loop_enabled, self.follow_playhead);
+            let toolbar_action = toolbar_ui(ui, is_playing, has_file, self.loop_enabled, self.follow_playhead, self.snap_to_zero);
             if action.is_none() {
                 action = toolbar_action;
             }
@@ -435,7 +437,7 @@ impl eframe::App for BarberApp {
             if let (Some(peaks), Some(edit_list)) = (&self.peak_data, &self.edit_list) {
                 let sample_rate = self.audio_buffer.as_ref().map_or(44100, |b| b.sample_rate);
                 let audio_samples = self.audio_buffer.as_ref().and_then(|b| b.samples.get(0).map(|s| s.as_slice()));
-                let widget = WaveformWidget::new(peaks, edit_list, &mut self.waveform_state, sample_rate, &mut action, self.clipboard.is_some(), audio_samples, &self.theme.waveform);
+                let widget = WaveformWidget::new(peaks, edit_list, &mut self.waveform_state, sample_rate, &mut action, self.clipboard.is_some(), audio_samples, &self.theme.waveform, self.snap_to_zero);
                 ui.add(widget);
             } else {
                 ui.centered_and_justified(|ui| {
@@ -564,6 +566,9 @@ impl BarberApp {
             }
             ToolbarAction::ToggleFollow => {
                 self.follow_playhead = !self.follow_playhead;
+            }
+            ToolbarAction::ToggleSnapZero => {
+                self.snap_to_zero = !self.snap_to_zero;
             }
             ToolbarAction::PlaySelection => {
                 if let Some(engine) = &self.playback_engine {
