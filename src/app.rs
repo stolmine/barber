@@ -93,6 +93,7 @@ impl eframe::App for BarberApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let dark_mode = ctx.style().visuals.dark_mode;
         let theme = self.theme.active(dark_mode).clone();
+        theme.chrome.apply(ctx);
         let quit_requested = ctx.input(|i| {
             i.viewport().close_requested()
                 || i.events.iter().any(|e| matches!(e,

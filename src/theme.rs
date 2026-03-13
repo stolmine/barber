@@ -1,4 +1,4 @@
-use egui::Color32;
+use egui::{Color32, Stroke};
 
 pub mod hex_color {
     use egui::Color32;
@@ -176,10 +176,95 @@ impl Default for MeterTheme {
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct ChromeTheme {
+    #[serde(with = "hex_color")] pub panel_fill: Color32,
+    #[serde(with = "hex_color")] pub window_fill: Color32,
+    #[serde(with = "hex_color")] pub text_color: Color32,
+    #[serde(with = "hex_color")] pub weak_text: Color32,
+    #[serde(with = "hex_color")] pub separator: Color32,
+    #[serde(with = "hex_color")] pub extreme_bg: Color32,
+    #[serde(with = "hex_color")] pub btn_fill: Color32,
+    #[serde(with = "hex_color")] pub btn_hover: Color32,
+    #[serde(with = "hex_color")] pub btn_active: Color32,
+    #[serde(with = "hex_color")] pub btn_stroke: Color32,
+    #[serde(with = "hex_color")] pub selection_bg: Color32,
+}
+
+impl ChromeTheme {
+    fn dark() -> Self {
+        Self {
+            panel_fill: Color32::from_rgb(0x2D, 0x35, 0x3B),      // bg0 medium (slightly warmer than hard for chrome)
+            window_fill: Color32::from_rgb(0x2E, 0x38, 0x3C),     // bg1
+            text_color: Color32::from_rgb(0xD3, 0xC6, 0xAA),      // fg
+            weak_text: Color32::from_rgb(0x85, 0x92, 0x89),        // grey1
+            separator: Color32::from_rgb(0x41, 0x4B, 0x50),        // bg3
+            extreme_bg: Color32::from_rgb(0x1E, 0x23, 0x26),       // bg_dim
+            btn_fill: Color32::from_rgb(0x37, 0x41, 0x45),         // bg2
+            btn_hover: Color32::from_rgb(0x41, 0x4B, 0x50),        // bg3
+            btn_active: Color32::from_rgb(0x49, 0x51, 0x56),       // bg4
+            btn_stroke: Color32::from_rgb(0x49, 0x51, 0x56),       // bg4
+            selection_bg: Color32::from_rgba_unmultiplied(0xA7, 0xC0, 0x80, 0x60), // green
+        }
+    }
+
+    fn light() -> Self {
+        Self {
+            panel_fill: Color32::from_rgb(0xF8, 0xF5, 0xE4),      // bg1
+            window_fill: Color32::from_rgb(0xFF, 0xFB, 0xEF),     // bg0
+            text_color: Color32::from_rgb(0x5C, 0x6A, 0x72),      // fg
+            weak_text: Color32::from_rgb(0x93, 0x9F, 0x91),        // grey1
+            separator: Color32::from_rgb(0xED, 0xEA, 0xDA),        // bg3
+            extreme_bg: Color32::from_rgb(0xFF, 0xFB, 0xEF),       // bg0
+            btn_fill: Color32::from_rgb(0xED, 0xEA, 0xDA),         // bg3
+            btn_hover: Color32::from_rgb(0xE8, 0xE5, 0xD5),        // bg4
+            btn_active: Color32::from_rgb(0xBE, 0xC5, 0xB2),       // bg5
+            btn_stroke: Color32::from_rgb(0xE8, 0xE5, 0xD5),       // bg4
+            selection_bg: Color32::from_rgba_unmultiplied(0x8D, 0xA1, 0x01, 0x60), // green
+        }
+    }
+
+    pub fn apply(&self, ctx: &egui::Context) {
+        ctx.style_mut(|style| {
+            let v = &mut style.visuals;
+            v.panel_fill = self.panel_fill;
+            v.window_fill = self.window_fill;
+            v.override_text_color = Some(self.text_color);
+            v.extreme_bg_color = self.extreme_bg;
+            v.faint_bg_color = self.btn_fill;
+            v.selection.bg_fill = self.selection_bg;
+            v.selection.stroke = Stroke::new(1.0, self.text_color);
+            v.warn_fg_color = Color32::from_rgb(0xDF, 0xA0, 0x00);
+            v.hyperlink_color = Color32::from_rgb(0x3A, 0x94, 0xC5);
+            v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, self.separator);
+            v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, self.text_color);
+            v.widgets.inactive.weak_bg_fill = self.btn_fill;
+            v.widgets.inactive.bg_stroke = Stroke::new(0.5, self.btn_stroke);
+            v.widgets.inactive.fg_stroke = Stroke::new(1.0, self.text_color);
+            v.widgets.hovered.weak_bg_fill = self.btn_hover;
+            v.widgets.hovered.bg_stroke = Stroke::new(1.0, self.weak_text);
+            v.widgets.hovered.fg_stroke = Stroke::new(1.5, self.text_color);
+            v.widgets.active.weak_bg_fill = self.btn_active;
+            v.widgets.active.bg_stroke = Stroke::new(1.0, self.weak_text);
+            v.widgets.active.fg_stroke = Stroke::new(2.0, self.text_color);
+            v.widgets.open.weak_bg_fill = self.btn_hover;
+            v.widgets.open.bg_stroke = Stroke::new(1.0, self.weak_text);
+            v.widgets.open.fg_stroke = Stroke::new(1.0, self.text_color);
+        });
+    }
+}
+
+impl Default for ChromeTheme {
+    fn default() -> Self {
+        Self::dark()
+    }
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ThemeVariant {
     pub waveform: WaveformTheme,
     pub minimap: MinimapTheme,
     pub meter: MeterTheme,
+    pub chrome: ChromeTheme,
     #[serde(with = "hex_color")] pub error_text: Color32,
 }
 
@@ -189,7 +274,8 @@ impl ThemeVariant {
             waveform: WaveformTheme::dark(),
             minimap: MinimapTheme::dark(),
             meter: MeterTheme::dark(),
-            error_text: Color32::from_rgb(0xE6, 0x7E, 0x80), // everforest red
+            chrome: ChromeTheme::dark(),
+            error_text: Color32::from_rgb(0xE6, 0x7E, 0x80),
         }
     }
 
@@ -198,7 +284,8 @@ impl ThemeVariant {
             waveform: WaveformTheme::light(),
             minimap: MinimapTheme::light(),
             meter: MeterTheme::light(),
-            error_text: Color32::from_rgb(0xF8, 0x55, 0x52), // everforest red
+            chrome: ChromeTheme::light(),
+            error_text: Color32::from_rgb(0xF8, 0x55, 0x52),
         }
     }
 }
