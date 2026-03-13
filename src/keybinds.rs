@@ -54,6 +54,11 @@ impl Default for Keybinds {
         b.insert("VolumeUp".into(), k(true, false, false, "ArrowUp"));
         b.insert("VolumeDown".into(), k(true, false, false, "ArrowDown"));
         b.insert("Quit".into(), k(true, false, false, "Q"));
+        b.insert("FadeInLinear".into(), k(true, false, false, "F"));
+        b.insert("FadeOutLinear".into(), k(true, true, false, "F"));
+        b.insert("VerticalZoomIn".into(), k(false, false, false, ""));
+        b.insert("VerticalZoomOut".into(), k(false, false, false, ""));
+        b.insert("VerticalZoomReset".into(), k(false, false, false, ""));
         Self { bindings: b }
     }
 }
@@ -148,6 +153,17 @@ impl Keybinds {
                 "VolumeUp" => Some(ToolbarAction::VolumeUp),
                 "VolumeDown" => Some(ToolbarAction::VolumeDown),
                 "Quit" => Some(ToolbarAction::Quit),
+                "FadeInLinear" if has_selection => Some(ToolbarAction::FadeInLinear),
+                "FadeInExponential" if has_selection => Some(ToolbarAction::FadeInExponential),
+                "FadeInLogarithmic" if has_selection => Some(ToolbarAction::FadeInLogarithmic),
+                "FadeInSCurve" if has_selection => Some(ToolbarAction::FadeInSCurve),
+                "FadeOutLinear" if has_selection => Some(ToolbarAction::FadeOutLinear),
+                "FadeOutExponential" if has_selection => Some(ToolbarAction::FadeOutExponential),
+                "FadeOutLogarithmic" if has_selection => Some(ToolbarAction::FadeOutLogarithmic),
+                "FadeOutSCurve" if has_selection => Some(ToolbarAction::FadeOutSCurve),
+                "VerticalZoomIn" => Some(ToolbarAction::VerticalZoomIn),
+                "VerticalZoomOut" => Some(ToolbarAction::VerticalZoomOut),
+                "VerticalZoomReset" => Some(ToolbarAction::VerticalZoomReset),
                 _ => None,
             };
             if action.is_some() { return action; }

@@ -6,13 +6,13 @@ use crate::audio::export;
 use crate::audio::levels::AudioLevels;
 use crate::audio::peaks::PeakData;
 use crate::audio::playback::PlaybackEngine;
-use crate::edit::{EditList, Region};
+use crate::edit::{EditList, FadeCurve, Region};
 use crate::history::EditHistory;
 use crate::keybinds::Keybinds;
 use crate::ui::menu::menu_bar_ui;
 use crate::ui::minimap::{minimap_ui, MinimapDrag};
 use crate::ui::toolbar::{meter_panel_ui, toolbar_ui, ToolbarAction};
-use crate::ui::waveform::{WaveformState, WaveformWidget};
+use crate::ui::waveform::{WaveformState, WaveformTheme, WaveformWidget};
 
 pub struct BarberApp {
     audio_buffer: Option<Arc<AudioBuffer>>,
@@ -34,6 +34,9 @@ pub struct BarberApp {
     show_quit_dialog: bool,
     prev_modifiers: egui::Modifiers,
     minimap_drag: MinimapDrag,
+    pending_file_op: Option<std::sync::mpsc::Receiver<Option<PathBuf>>>,
+    pending_export_op: Option<std::sync::mpsc::Receiver<Option<PathBuf>>>,
+    waveform_theme: WaveformTheme,
 }
 
 impl Default for BarberApp {
@@ -58,6 +61,9 @@ impl Default for BarberApp {
             show_quit_dialog: false,
             prev_modifiers: egui::Modifiers::NONE,
             minimap_drag: MinimapDrag::None,
+            pending_file_op: None,
+            pending_export_op: None,
+            waveform_theme: WaveformTheme::default(),
         }
     }
 }
@@ -106,6 +112,35 @@ impl eframe::App for BarberApp {
             if let Some(path) = &file.path {
                 self.load_file(path.clone());
             }
+        }
+
+        if let Some(rx) = &self.pending_file_op {
+            if let Ok(result) = rx.try_recv() {
+                if let Some(path) = result {
+                    self.load_file(path);
+                }
+                self.pending_file_op = None;
+            }
+        }
+
+        if let Some(rx) = &self.pending_export_op {
+            if let Ok(result) = rx.try_recv() {
+                if let Some(path) = result {
+                    if let (Some(buffer), Some(edit_list)) = (&self.audio_buffer, &self.edit_list) {
+                        match export::export_wav(&path, buffer, edit_list) {
+                            Ok(()) => { self.dirty = false; }
+                            Err(e) => {
+                                self.error_message = Some(format!("Export failed: {}", e));
+                            }
+                        }
+                    }
+                }
+                self.pending_export_op = None;
+            }
+        }
+
+        if self.pending_file_op.is_some() || self.pending_export_op.is_some() {
+            ctx.request_repaint();
         }
 
         let has_file = self.audio_buffer.is_some();
@@ -219,7 +254,7 @@ impl eframe::App for BarberApp {
             if let (Some(peaks), Some(edit_list)) = (&self.peak_data, &self.edit_list) {
                 let sample_rate = self.audio_buffer.as_ref().map_or(44100, |b| b.sample_rate);
                 let audio_samples = self.audio_buffer.as_ref().and_then(|b| b.samples.get(0).map(|s| s.as_slice()));
-                let widget = WaveformWidget::new(peaks, edit_list, &mut self.waveform_state, sample_rate, &mut action, self.clipboard.is_some(), audio_samples);
+                let widget = WaveformWidget::new(peaks, edit_list, &mut self.waveform_state, sample_rate, &mut action, self.clipboard.is_some(), audio_samples, &self.waveform_theme);
                 ui.add(widget);
             } else {
                 ui.centered_and_justified(|ui| {
@@ -421,17 +456,36 @@ impl BarberApp {
                     }
                 }
             }
+            ToolbarAction::FadeInLinear => self.apply_fade(true, FadeCurve::Linear),
+            ToolbarAction::FadeInExponential => self.apply_fade(true, FadeCurve::Exponential),
+            ToolbarAction::FadeInLogarithmic => self.apply_fade(true, FadeCurve::Logarithmic),
+            ToolbarAction::FadeInSCurve => self.apply_fade(true, FadeCurve::SCurve),
+            ToolbarAction::FadeOutLinear => self.apply_fade(false, FadeCurve::Linear),
+            ToolbarAction::FadeOutExponential => self.apply_fade(false, FadeCurve::Exponential),
+            ToolbarAction::FadeOutLogarithmic => self.apply_fade(false, FadeCurve::Logarithmic),
+            ToolbarAction::FadeOutSCurve => self.apply_fade(false, FadeCurve::SCurve),
+            ToolbarAction::VerticalZoomIn => {
+                self.waveform_state.vertical_zoom = (self.waveform_state.vertical_zoom * 1.1).clamp(0.5, 20.0);
+            }
+            ToolbarAction::VerticalZoomOut => {
+                self.waveform_state.vertical_zoom = (self.waveform_state.vertical_zoom * 0.9).clamp(0.5, 20.0);
+            }
+            ToolbarAction::VerticalZoomReset => {
+                self.waveform_state.vertical_zoom = 1.0;
+            }
             ToolbarAction::Quit => {}
         }
     }
 
     fn open_file(&mut self) {
-        let file = rfd::FileDialog::new()
-            .add_filter("Audio", &["wav", "aiff", "aif", "mp3", "flac", "m4a", "ogg"])
-            .pick_file();
-        if let Some(path) = file {
-            self.load_file(path);
-        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let file = rfd::FileDialog::new()
+                .add_filter("Audio", &["wav", "aiff", "aif", "mp3", "flac", "m4a", "ogg"])
+                .pick_file();
+            let _ = tx.send(file);
+        });
+        self.pending_file_op = Some(rx);
     }
 
     fn load_file(&mut self, path: PathBuf) {
@@ -465,23 +519,18 @@ impl BarberApp {
     }
 
     fn export_file(&mut self) {
-        let (Some(buffer), Some(edit_list)) = (&self.audio_buffer, &self.edit_list) else {
+        if self.audio_buffer.is_none() || self.edit_list.is_none() {
             return;
-        };
-
-        let file = rfd::FileDialog::new()
-            .add_filter("WAV", &["wav"])
-            .set_file_name("export.wav")
-            .save_file();
-
-        let Some(path) = file else { return };
-
-        match export::export_wav(&path, buffer, edit_list) {
-            Ok(()) => { self.dirty = false; }
-            Err(e) => {
-                self.error_message = Some(format!("Export failed: {}", e));
-            }
         }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let file = rfd::FileDialog::new()
+                .add_filter("WAV", &["wav"])
+                .set_file_name("export.wav")
+                .save_file();
+            let _ = tx.send(file);
+        });
+        self.pending_export_op = Some(rx);
     }
 
     fn gap_delete(&mut self) {
@@ -698,6 +747,19 @@ impl BarberApp {
         self.sync_playback_engine();
     }
 
+    fn apply_fade(&mut self, is_fade_in: bool, curve: FadeCurve) {
+        let Some((start, end)) = self.waveform_state.selection else { return };
+        if let Some(el) = &self.edit_list {
+            self.history.push(el.clone());
+        }
+        if let Some(el) = &mut self.edit_list {
+            if is_fade_in { el.apply_fade_in(start, end, curve); }
+            else { el.apply_fade_out(start, end, curve); }
+        }
+        self.dirty = true;
+        self.sync_playback_engine();
+    }
+
     fn seek_if_playing(&self, frame: usize) {
         if let Some(engine) = &self.playback_engine {
             if engine.is_playing() {
@@ -735,6 +797,14 @@ fn action_label(action: &ToolbarAction) -> Option<&'static str> {
         ToolbarAction::GoToOutPoint => Some("Go to Out"),
         ToolbarAction::GoToStart => Some("Go to Start"),
         ToolbarAction::GoToEnd => Some("Go to End"),
+        ToolbarAction::FadeInLinear => Some("Fade In (Linear)"),
+        ToolbarAction::FadeInExponential => Some("Fade In (Exponential)"),
+        ToolbarAction::FadeInLogarithmic => Some("Fade In (Logarithmic)"),
+        ToolbarAction::FadeInSCurve => Some("Fade In (S-Curve)"),
+        ToolbarAction::FadeOutLinear => Some("Fade Out (Linear)"),
+        ToolbarAction::FadeOutExponential => Some("Fade Out (Exponential)"),
+        ToolbarAction::FadeOutLogarithmic => Some("Fade Out (Logarithmic)"),
+        ToolbarAction::FadeOutSCurve => Some("Fade Out (S-Curve)"),
         _ => None,
     }
 }

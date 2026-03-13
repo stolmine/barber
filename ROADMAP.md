@@ -133,6 +133,11 @@ Export -------------------------------------+
 ### v0.2.1
 53. Fix fades — refactored `ripple_delete` and `insert` into inner variants with `apply_boundary` flag so `apply_fade_in`/`apply_fade_out` no longer have their user-set fade values overwritten by 128-sample boundary fades
 54. Remove amplitude ruler — removed unhelpful linear 0–1 amplitude ruler from waveform left edge; meter panel dB ruler is sufficient. Waveform now uses full available width
+55. Vertical zoom — Alt+scroll or pinch gesture scales waveform amplitude (0.5×–20×). Menu items under View, keybind actions wired up
+56. Anti-aliased waveforms — replaced per-pixel line segments with mesh quad-strip fill + optional stroked envelope paths via egui PathShape
+57. Trackpad gestures — native macOS pinch-to-zoom (horizontal) via `InputState::zoom_delta()`, Shift+pinch for vertical zoom. Two-finger scroll for horizontal pan
+58. Async file picker — `rfd::FileDialog` runs on background thread via mpsc channel, no longer blocks UI
+59. Waveform theming — `WaveformTheme` struct with all 15 waveform colors as named fields, passed through to all draw functions. Stroke width/color configurable, defaults to matching fill
 
 ## v0.2 Wishlist
 
@@ -142,15 +147,12 @@ Export -------------------------------------+
 - **Apply fades in or out, with selectable curves:** the question will be how to select curves
 
 ### Waveform Display
-- **Vertical zoom:** Scale waveform amplitude independently of window height
 - **Amplitude control:** Gain adjustment with live waveform preview
-- **Anti-aliased waveforms:** Smooth rendering instead of per-pixel lines
 
 ### Playback
 - **Speed/pitch control:** Variable playback rate with optional pitch preservation
 
 ### Interaction
-- **Trackpad gestures:** Native pinch-to-zoom and two-finger scroll
 - **BPM detection and beat grid:** Adjustable beat grid for quantized edits with quantized selection on hotkey/toggle
 
 ### UI Polish (last priority)
@@ -166,4 +168,4 @@ Export -------------------------------------+
 - AIFF / OGG / MP3 export
 - Sample rate conversion on export
 - Recent files list
-- Optimization - improve load times and snappiness as much as possible. File picker in particular is opening incredibly slowly right now
+- Optimization - improve load times and snappiness as much as possible

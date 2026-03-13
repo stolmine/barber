@@ -1,12 +1,55 @@
-use egui::{Color32, Painter, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
+use egui::{Color32, Mesh, Painter, Pos2, Rect, Response, Sense, Shape, Stroke, StrokeKind, Ui, Vec2};
+use egui::epaint::{PathShape, PathStroke};
 
 use crate::audio::peaks::PeakData;
 use crate::edit::EditList;
 use crate::ui::toolbar::ToolbarAction;
 
+pub struct WaveformTheme {
+    pub background: Color32,
+    pub center_line: Color32,
+    pub channel_separator: Color32,
+    pub waveform_fill: Color32,
+    pub waveform_stroke: Color32,
+    pub waveform_stroke_width: f32,
+    pub selection_fill: Color32,
+    pub selection_stroke: Color32,
+    pub playhead: Color32,
+    pub phantom_bg: Color32,
+    pub phantom_wave: Color32,
+    pub in_point: Color32,
+    pub out_point: Color32,
+    pub ruler_text: Color32,
+    pub ruler_tick: Color32,
+}
+
+impl Default for WaveformTheme {
+    fn default() -> Self {
+        let wave = Color32::from_rgb(100, 180, 255);
+        Self {
+            background: Color32::from_rgb(20, 20, 24),
+            center_line: Color32::from_rgb(50, 50, 60),
+            channel_separator: Color32::from_rgb(70, 70, 80),
+            waveform_fill: wave,
+            waveform_stroke: wave,
+            waveform_stroke_width: 1.0,
+            selection_fill: Color32::from_rgba_unmultiplied(100, 180, 255, 40),
+            selection_stroke: Color32::from_rgba_unmultiplied(100, 180, 255, 120),
+            playhead: Color32::from_rgb(255, 220, 60),
+            phantom_bg: Color32::from_rgba_unmultiplied(255, 220, 60, 50),
+            phantom_wave: Color32::from_rgb(255, 120, 0),
+            in_point: Color32::from_rgb(80, 220, 100),
+            out_point: Color32::from_rgb(220, 80, 80),
+            ruler_text: Color32::from_rgb(160, 160, 170),
+            ruler_tick: Color32::from_rgb(80, 80, 90),
+        }
+    }
+}
+
 pub struct WaveformState {
     pub scroll_offset: f64,
     pub zoom: f64,
+    pub vertical_zoom: f32,
     pub selection: Option<(usize, usize)>,
     pub playhead: usize,
     pub last_width: f32,
@@ -22,6 +65,7 @@ impl Default for WaveformState {
         Self {
             scroll_offset: 0.0,
             zoom: 1.0,
+            vertical_zoom: 1.0,
             selection: None,
             playhead: 0,
             last_width: 0.0,
@@ -86,6 +130,7 @@ pub struct WaveformWidget<'a> {
     action: &'a mut Option<ToolbarAction>,
     has_clipboard: bool,
     audio_samples: Option<&'a [f32]>,
+    theme: &'a WaveformTheme,
 }
 
 impl<'a> WaveformWidget<'a> {
@@ -97,8 +142,9 @@ impl<'a> WaveformWidget<'a> {
         action: &'a mut Option<ToolbarAction>,
         has_clipboard: bool,
         audio_samples: Option<&'a [f32]>,
+        theme: &'a WaveformTheme,
     ) -> Self {
-        Self { peaks, edit_list, state, sample_rate, action, has_clipboard, audio_samples }
+        Self { peaks, edit_list, state, sample_rate, action, has_clipboard, audio_samples, theme }
     }
 }
 
@@ -172,8 +218,9 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
             }
         });
 
-        painter.rect_filled(rect, 0.0, Color32::from_rgb(20, 20, 24));
-        draw_ruler(&painter, self.state, waveform_rect, rect.bottom(), self.sample_rate);
+        let theme = self.theme;
+        painter.rect_filled(rect, 0.0, theme.background);
+        draw_ruler(&painter, self.state, waveform_rect, rect.bottom(), self.sample_rate, theme);
 
         let num_channels = self.peaks.channels();
         let channel_height = waveform_rect.height() / num_channels.max(1) as f32;
@@ -198,16 +245,19 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
                 Vec2::new(width, channel_height),
             );
             let center_y = ch_rect.center().y;
-            let half_h = channel_height * 0.5;
+            let half_h = channel_height * 0.5 * self.state.vertical_zoom;
 
             painter.line_segment(
                 [Pos2::new(ch_rect.left(), center_y), Pos2::new(ch_rect.right(), center_y)],
-                Stroke::new(1.0, Color32::from_rgb(50, 50, 60)),
+                Stroke::new(1.0, theme.center_line),
             );
 
             if start_frame >= end_frame || num_pixels == 0 {
                 continue;
             }
+
+            let mut top_points: Vec<Pos2> = Vec::with_capacity(num_pixels);
+            let mut bot_points: Vec<Pos2> = Vec::with_capacity(num_pixels);
 
             for px in 0..num_pixels {
                 let px_frame_start = start_frame + (px as f64 * self.state.zoom) as usize;
@@ -224,10 +274,42 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
                 let x = waveform_rect.left() + px as f32;
                 let y_top = (center_y - hi * half_h).max(ch_rect.top());
                 let y_bot = (center_y - lo * half_h).min(ch_rect.bottom());
-                painter.line_segment(
-                    [Pos2::new(x, y_top), Pos2::new(x, y_bot)],
-                    Stroke::new(1.0, Color32::from_rgb(100, 180, 255)),
-                );
+                top_points.push(Pos2::new(x, y_top));
+                bot_points.push(Pos2::new(x, y_bot));
+            }
+
+            let n = top_points.len();
+            if n < 2 { continue; }
+
+            let mut mesh = Mesh::default();
+            mesh.reserve_vertices(n * 2);
+            mesh.reserve_triangles((n - 1) * 2);
+            let fill_color = theme.waveform_fill;
+            for i in 0..n {
+                mesh.colored_vertex(top_points[i], fill_color);
+                mesh.colored_vertex(bot_points[i], fill_color);
+            }
+            for i in 0..(n - 1) {
+                let v = (i * 2) as u32;
+                mesh.add_triangle(v, v + 1, v + 2);
+                mesh.add_triangle(v + 1, v + 3, v + 2);
+            }
+            painter.add(Shape::mesh(mesh));
+
+            if theme.waveform_stroke_width > 0.0 {
+                let stroke = PathStroke::new(theme.waveform_stroke_width, theme.waveform_stroke);
+                painter.add(Shape::Path(PathShape {
+                    points: top_points,
+                    closed: false,
+                    fill: Color32::TRANSPARENT,
+                    stroke: stroke.clone(),
+                }));
+                painter.add(Shape::Path(PathShape {
+                    points: bot_points,
+                    closed: false,
+                    fill: Color32::TRANSPARENT,
+                    stroke,
+                }));
             }
         }
 
@@ -235,14 +317,14 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
             let y = waveform_rect.top() + ch as f32 * channel_height;
             painter.line_segment(
                 [Pos2::new(waveform_rect.left(), y), Pos2::new(waveform_rect.right(), y)],
-                Stroke::new(1.0, Color32::from_rgb(70, 70, 80)),
+                Stroke::new(1.0, theme.channel_separator),
             );
         }
 
-        draw_selection(&painter, self.state, waveform_rect, total_frames);
-        draw_in_out_points(&painter, self.state, waveform_rect, total_frames);
-        draw_phantom_playhead(&painter, self.state, waveform_rect, self.peaks, self.edit_list, num_channels, channel_height);
-        draw_playhead(&painter, self.state, waveform_rect);
+        draw_selection(&painter, self.state, waveform_rect, total_frames, theme);
+        draw_in_out_points(&painter, self.state, waveform_rect, total_frames, theme);
+        draw_phantom_playhead(&painter, self.state, waveform_rect, self.peaks, self.edit_list, num_channels, channel_height, theme);
+        draw_playhead(&painter, self.state, waveform_rect, theme);
 
         response
     }
@@ -258,8 +340,23 @@ fn handle_input(
     audio_samples: Option<&[f32]>,
 ) {
     if response.hovered() {
-        let scroll_delta = ui.input(|i| i.smooth_scroll_delta);
+        let pinch_delta = ui.input(|i| i.zoom_delta());
         let modifiers = ui.input(|i| i.modifiers);
+
+        if pinch_delta != 1.0 {
+            if modifiers.shift {
+                state.vertical_zoom = (state.vertical_zoom * pinch_delta).clamp(0.5, 20.0);
+            } else {
+                let mouse_x = ui.input(|i| i.pointer.hover_pos()).map(|p| p.x).unwrap_or(rect.center().x);
+                let frame_at_cursor = state.x_to_frame(mouse_x, &rect);
+                state.zoom = (state.zoom / pinch_delta as f64).max(1.0);
+                let new_x = state.frame_to_x(frame_at_cursor, &rect);
+                let dx = (mouse_x - new_x) as f64;
+                state.scroll_offset = (state.scroll_offset - dx * state.zoom).max(0.0);
+            }
+        }
+
+        let scroll_delta = ui.input(|i| i.smooth_scroll_delta);
 
         if modifiers.command {
             if scroll_delta.y != 0.0 {
@@ -337,7 +434,7 @@ fn handle_input(
     }
 }
 
-fn draw_selection(painter: &Painter, state: &WaveformState, rect: Rect, total_frames: usize) {
+fn draw_selection(painter: &Painter, state: &WaveformState, rect: Rect, total_frames: usize, theme: &WaveformTheme) {
     let Some((sel_start, sel_end)) = state.selection else { return };
     if sel_start >= sel_end || sel_start > total_frames {
         return;
@@ -351,11 +448,11 @@ fn draw_selection(painter: &Painter, state: &WaveformState, rect: Rect, total_fr
         Pos2::new(x_start, rect.top()),
         Pos2::new(x_end, rect.bottom()),
     );
-    painter.rect_filled(sel_rect, 0.0, Color32::from_rgba_unmultiplied(100, 180, 255, 40));
-    painter.rect_stroke(sel_rect, 0.0, Stroke::new(1.0, Color32::from_rgba_unmultiplied(100, 180, 255, 120)), StrokeKind::Middle);
+    painter.rect_filled(sel_rect, 0.0, theme.selection_fill);
+    painter.rect_stroke(sel_rect, 0.0, Stroke::new(1.0, theme.selection_stroke), StrokeKind::Middle);
 }
 
-fn draw_in_out_points(painter: &Painter, state: &WaveformState, rect: Rect, total_frames: usize) {
+fn draw_in_out_points(painter: &Painter, state: &WaveformState, rect: Rect, total_frames: usize, theme: &WaveformTheme) {
     let draw_marker = |frame: usize, color: Color32| {
         let x = state.frame_to_x(frame, &rect);
         if x >= rect.left() && x <= rect.right() {
@@ -373,10 +470,10 @@ fn draw_in_out_points(painter: &Painter, state: &WaveformState, rect: Rect, tota
         }
     };
     if state.in_point > 0 {
-        draw_marker(state.in_point, Color32::from_rgb(80, 220, 100));
+        draw_marker(state.in_point, theme.in_point);
     }
     if state.out_point > 0 && state.out_point < total_frames {
-        draw_marker(state.out_point, Color32::from_rgb(220, 80, 80));
+        draw_marker(state.out_point, theme.out_point);
     }
 }
 
@@ -388,14 +485,15 @@ fn draw_phantom_playhead(
     edit_list: &EditList,
     num_channels: usize,
     channel_height: f32,
+    theme: &WaveformTheme,
 ) {
     let Some(frame) = state.phantom_playhead else { return };
     let x = state.frame_to_x(frame, &rect);
     if x < rect.left() || x > rect.right() {
         return;
     }
-    let bg_color = Color32::from_rgba_unmultiplied(255, 220, 60, 50);
-    let wave_color = Color32::from_rgb(255, 120, 0);
+    let bg_color = theme.phantom_bg;
+    let wave_color = theme.phantom_wave;
 
     for ch in 0..num_channels.max(1) {
         let ch_top = rect.top() + ch as f32 * channel_height;
@@ -433,17 +531,17 @@ fn draw_phantom_playhead(
     }
 }
 
-fn draw_playhead(painter: &Painter, state: &WaveformState, rect: Rect) {
+fn draw_playhead(painter: &Painter, state: &WaveformState, rect: Rect, theme: &WaveformTheme) {
     let x = state.frame_to_x(state.playhead, &rect);
     if x >= rect.left() && x <= rect.right() {
         painter.line_segment(
             [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
-            Stroke::new(2.0, Color32::from_rgb(255, 220, 60)),
+            Stroke::new(2.0, theme.playhead),
         );
     }
 }
 
-fn draw_ruler(painter: &Painter, state: &WaveformState, rect: Rect, ruler_bottom: f32, sample_rate: u32) {
+fn draw_ruler(painter: &Painter, state: &WaveformState, rect: Rect, ruler_bottom: f32, sample_rate: u32, theme: &WaveformTheme) {
     let visible_frames = rect.width() as f64 * state.zoom;
     let seconds_per_pixel = state.zoom / sample_rate as f64;
 
@@ -457,8 +555,8 @@ fn draw_ruler(painter: &Painter, state: &WaveformState, rect: Rect, ruler_bottom
     let first_tick = (start_sec / interval).floor() * interval;
 
     let font = egui::FontId::monospace(10.0);
-    let color = Color32::from_rgb(160, 160, 170);
-    let tick_color = Color32::from_rgb(80, 80, 90);
+    let color = theme.ruler_text;
+    let tick_color = theme.ruler_tick;
 
     let mut t = first_tick;
     while t <= end_sec {

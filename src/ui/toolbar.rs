@@ -38,6 +38,17 @@ pub enum ToolbarAction {
     VolumeUp,
     VolumeDown,
     Quit,
+    FadeInLinear,
+    FadeInExponential,
+    FadeInLogarithmic,
+    FadeInSCurve,
+    FadeOutLinear,
+    FadeOutExponential,
+    FadeOutLogarithmic,
+    FadeOutSCurve,
+    VerticalZoomIn,
+    VerticalZoomOut,
+    VerticalZoomReset,
 }
 
 impl ToolbarAction {
@@ -78,7 +89,7 @@ pub fn toolbar_ui(
     action
 }
 
-const DB_TICKS: &[(f32, &str)] = &[
+pub const DB_TICKS: &[(f32, &str)] = &[
     (1.0, "0"),
     (0.708, "-3"),
     (0.501, "-6"),
