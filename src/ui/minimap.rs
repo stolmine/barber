@@ -94,6 +94,15 @@ pub fn minimap_ui(
     );
     painter.rect_stroke(vp_rect, 0.0, Stroke::new(1.0, Color32::from_gray(200)), egui::StrokeKind::Inside);
 
+    // Playhead
+    let ph_x = rect.left() + (state.playhead as f64 * fpx) as f32;
+    if ph_x >= rect.left() && ph_x <= rect.right() {
+        painter.line_segment(
+            [Pos2::new(ph_x, rect.top()), Pos2::new(ph_x, rect.bottom())],
+            Stroke::new(1.0, Color32::from_rgb(255, 220, 60)),
+        );
+    }
+
     // Helper: convert minimap pixel x to frame
     let x_to_frame = |x: f32| -> f64 {
         ((x - rect.left()) as f64 / fpx).clamp(0.0, total as f64)

@@ -35,6 +35,7 @@ fn main() -> eframe::Result<()> {
         fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap()
             .insert(0, "jbmono".to_owned());
         cc.egui_ctx.set_fonts(fonts);
+        cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         Ok(Box::new(app::BarberApp::default()))
     }))
 }

@@ -44,6 +44,7 @@ impl Default for Keybinds {
         b.insert("Normalize".into(), k(true, true, false, "N"));
         b.insert("RemoveDC".into(), k(true, true, false, "D"));
         b.insert("SelectAll".into(), k(true, false, false, "A"));
+        b.insert("Crop".into(), k(true, false, false, "K"));
         b.insert("SetInPoint".into(), k(false, true, false, "I"));
         b.insert("SetOutPoint".into(), k(false, true, false, "O"));
         b.insert("GoToInPoint".into(), k(false, false, false, "I"));
@@ -55,11 +56,14 @@ impl Default for Keybinds {
         b.insert("VolumeUp".into(), k(true, false, false, "ArrowUp"));
         b.insert("VolumeDown".into(), k(true, false, false, "ArrowDown"));
         b.insert("Quit".into(), k(true, false, false, "Q"));
+        b.insert("ZoomIn".into(), k(true, false, false, "Equals"));
+        b.insert("ZoomOut".into(), k(true, false, false, "Minus"));
+        b.insert("ZoomToFit".into(), k(false, false, false, "Enter"));
         b.insert("FadeInLinear".into(), k(true, false, false, "F"));
         b.insert("FadeOutLinear".into(), k(true, true, false, "F"));
-        b.insert("VerticalZoomIn".into(), k(false, false, false, ""));
-        b.insert("VerticalZoomOut".into(), k(false, false, false, ""));
-        b.insert("VerticalZoomReset".into(), k(false, false, false, ""));
+        b.insert("VerticalZoomIn".into(), k(true, true, false, "Plus"));
+        b.insert("VerticalZoomOut".into(), k(true, true, false, "Minus"));
+        b.insert("VerticalZoomReset".into(), k(true, false, false, "Num0"));
         Self { bindings: b }
     }
 }
@@ -124,7 +128,7 @@ impl Keybinds {
             if !pressed { continue; }
             let action = match name.as_str() {
                 "Play" => Some(if is_playing { ToolbarAction::Pause } else { ToolbarAction::Play }),
-                "PlaySelection" if has_selection => Some(ToolbarAction::PlaySelection),
+                "PlaySelection" if has_file => Some(ToolbarAction::PlaySelection),
                 "ToggleLoop" => Some(ToolbarAction::ToggleLoop),
                 "ToggleFollow" => Some(ToolbarAction::ToggleFollow),
                 "GapDelete" if has_selection => Some(ToolbarAction::GapDelete),
@@ -144,6 +148,10 @@ impl Keybinds {
                 "RemoveDC" if has_file => Some(ToolbarAction::RemoveDC),
                 "ToggleFade" if has_file => Some(ToolbarAction::ToggleFade),
                 "SelectAll" if has_file => Some(ToolbarAction::SelectAll),
+                "Crop" if has_selection => Some(ToolbarAction::Crop),
+                "ZoomIn" if has_file => Some(ToolbarAction::ZoomIn),
+                "ZoomOut" if has_file => Some(ToolbarAction::ZoomOut),
+                "ZoomToFit" if has_file => Some(ToolbarAction::ZoomToFit),
                 "SetInPoint" if has_file => Some(ToolbarAction::SetInPoint),
                 "SetOutPoint" if has_file => Some(ToolbarAction::SetOutPoint),
                 "GoToInPoint" if has_file => Some(ToolbarAction::GoToInPoint),
@@ -205,6 +213,11 @@ fn parse_key(name: &str) -> Option<egui::Key> {
         "ArrowDown" => Some(Key::ArrowDown),
         "ArrowLeft" => Some(Key::ArrowLeft),
         "ArrowRight" => Some(Key::ArrowRight),
+        "Plus" => Some(Key::Plus),
+        "Minus" => Some(Key::Minus),
+        "Equals" => Some(Key::Equals),
+        "Num0" => Some(Key::Num0),
+        "F12" => Some(Key::F12),
         _ => None,
     }
 }

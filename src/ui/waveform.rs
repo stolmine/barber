@@ -110,6 +110,13 @@ impl WaveformState {
         }
     }
 
+    pub fn center_on(&mut self, frame: usize, total_frames: usize) {
+        let view_frames = self.last_width as f64 * self.zoom;
+        let max_scroll = (total_frames as f64 - view_frames).max(0.0);
+        let target = (frame as f64 - view_frames * 0.5).clamp(0.0, max_scroll);
+        self.scroll_offset += (target - self.scroll_offset) * 0.15;
+    }
+
     fn frame_to_x(&self, frame: usize, rect: &Rect) -> f32 {
         let px = (frame as f64 - self.scroll_offset) / self.zoom;
         rect.left() + px as f32

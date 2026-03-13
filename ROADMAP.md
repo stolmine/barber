@@ -146,9 +146,8 @@ Export -------------------------------------+
 ### Editing
 - **Individual L/R channel editing:** Edit left/right channels independently on stereo files, toggle-able
 
-### Status Bar
-- **Zoom percentages:** Show X (horizontal) and Y (vertical) zoom levels in status bar
-- **Undo/Redo labels:** Undo and Redo menu items and status bar should show the name of the action being undone/redone (e.g. "Undo Fade In", "Redo Ripple Delete")
+### Keybinds
+- **Complete keybind pass:** Audit all actions for missing/inconsistent keybinds, ensure every action is reachable from keyboard. Fill in empty bindings (VerticalZoomIn/Out/Reset, etc.)
 
 ### UI Polish (last priority)
 - **Custom styling for in/out points:** Current dashed lines are hard to see — need better visual treatment (thicker, labels, triangular markers, or glow). Add shading/tint of the region between in and out points when they are set off defaults

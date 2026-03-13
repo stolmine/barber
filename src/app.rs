@@ -565,8 +565,12 @@ impl BarberApp {
                 self.follow_playhead = !self.follow_playhead;
             }
             ToolbarAction::PlaySelection => {
-                if let (Some(engine), Some((start, end))) = (&self.playback_engine, self.waveform_state.selection) {
-                    engine.set_stop_at(Some(end));
+                if let Some(engine) = &self.playback_engine {
+                    let total = self.edit_list.as_ref().map_or(0, |el| el.total_frames());
+                    let (start, end) = self.waveform_state.selection.unwrap_or((0, total));
+                    self.loop_enabled = true;
+                    engine.set_loop(true, start, Some(end));
+                    engine.set_stop_at(None);
                     engine.seek(start);
                     self.waveform_state.phantom_playhead = Some(start);
                     engine.play();
@@ -652,6 +656,9 @@ impl BarberApp {
             }
             ToolbarAction::VerticalZoomReset => {
                 self.waveform_state.vertical_zoom = 1.0;
+                if let Some(el) = &self.edit_list {
+                    self.waveform_state.zoom_to_fit(el.total_frames(), self.waveform_state.last_width);
+                }
             }
             ToolbarAction::Quit => {}
             ToolbarAction::ChangeSpeed => {

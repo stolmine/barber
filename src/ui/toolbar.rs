@@ -221,16 +221,18 @@ fn draw_gain_ruler(ui: &mut egui::Ui, height: f32) {
     let font = egui::FontId::monospace(8.0);
     let color = egui::Color32::from_gray(130);
     let tick_color = egui::Color32::from_gray(80);
+    let half_line = 4.0;
 
     for &(db, label) in GAIN_TICKS {
         let frac = (db + 24.0) / 48.0;
         let y = rect.max.y - rect.height() * frac;
+        let label_y = y.clamp(rect.min.y + half_line, rect.max.y - half_line);
         painter.line_segment(
             [egui::pos2(rect.max.x - 4.0, y), egui::pos2(rect.max.x, y)],
             egui::Stroke::new(1.0, tick_color),
         );
         painter.text(
-            egui::pos2(rect.min.x, y),
+            egui::pos2(rect.min.x, label_y),
             egui::Align2::LEFT_CENTER,
             label,
             font.clone(),
@@ -292,16 +294,18 @@ fn draw_db_ruler(ui: &mut egui::Ui, height: f32) {
 
     let font = egui::FontId::monospace(8.0);
     let color = egui::Color32::from_gray(120);
+    let half_line = 4.0;
 
     for &(linear, label) in DB_TICKS {
         let y = rect.max.y - rect.height() * linear;
         if y < rect.min.y || y > rect.max.y { continue; }
+        let label_y = y.clamp(rect.min.y + half_line, rect.max.y - half_line);
         painter.line_segment(
             [egui::pos2(rect.min.x, y), egui::pos2(rect.min.x + 3.0, y)],
             egui::Stroke::new(1.0, color),
         );
         painter.text(
-            egui::pos2(rect.min.x + 5.0, y),
+            egui::pos2(rect.min.x + 5.0, label_y),
             egui::Align2::LEFT_CENTER,
             label,
             font.clone(),
