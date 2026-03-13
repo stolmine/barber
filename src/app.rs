@@ -91,6 +91,8 @@ impl Default for BarberApp {
 
 impl eframe::App for BarberApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let dark_mode = ctx.style().visuals.dark_mode;
+        let theme = self.theme.active(dark_mode).clone();
         let quit_requested = ctx.input(|i| {
             i.viewport().close_requested()
                 || i.events.iter().any(|e| matches!(e,
@@ -353,7 +355,7 @@ impl eframe::App for BarberApp {
                     }
                 }
                 if let Some(err) = &self.error_message {
-                    ui.colored_label(self.theme.error_text, err);
+                    ui.colored_label(theme.error_text, err);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if let Some(action_name) = &self.last_action {
@@ -380,7 +382,7 @@ impl eframe::App for BarberApp {
             .exact_height(32.0)
             .show(ctx, |ui| {
                 if let (Some(peaks), Some(edit_list)) = (&self.peak_data, &self.edit_list) {
-                    minimap_ui(ui, peaks, edit_list, &mut self.waveform_state, &mut self.minimap_drag, &self.theme.minimap);
+                    minimap_ui(ui, peaks, edit_list, &mut self.waveform_state, &mut self.minimap_drag, &theme.minimap);
                 }
             });
 
@@ -388,7 +390,7 @@ impl eframe::App for BarberApp {
             .resizable(false)
             .exact_width(94.0)
             .show(ctx, |ui| {
-                meter_panel_ui(ui, &self.audio_levels, &self.theme.meter);
+                meter_panel_ui(ui, &self.audio_levels, &theme.meter);
             });
 
         egui::SidePanel::left("gain_panel")
@@ -402,7 +404,7 @@ impl eframe::App for BarberApp {
                         let avg_gain = edit_list.average_gain(start, end);
                         self.gain_db = 20.0 * avg_gain.log10();
                     }
-                    let (changed, released) = gain_panel_ui(ui, &mut self.gain_db, &self.theme.meter);
+                    let (changed, released) = gain_panel_ui(ui, &mut self.gain_db, &theme.meter);
                     if changed && !self.gain_dragging {
                         self.history.push("Gain", edit_list.clone());
                         self.gain_db_start = self.gain_db;
@@ -437,7 +439,7 @@ impl eframe::App for BarberApp {
             if let (Some(peaks), Some(edit_list)) = (&self.peak_data, &self.edit_list) {
                 let sample_rate = self.audio_buffer.as_ref().map_or(44100, |b| b.sample_rate);
                 let audio_samples = self.audio_buffer.as_ref().and_then(|b| b.samples.get(0).map(|s| s.as_slice()));
-                let widget = WaveformWidget::new(peaks, edit_list, &mut self.waveform_state, sample_rate, &mut action, self.clipboard.is_some(), audio_samples, &self.theme.waveform, self.snap_to_zero);
+                let widget = WaveformWidget::new(peaks, edit_list, &mut self.waveform_state, sample_rate, &mut action, self.clipboard.is_some(), audio_samples, &theme.waveform, self.snap_to_zero);
                 ui.add(widget);
             } else {
                 ui.centered_and_justified(|ui| {
