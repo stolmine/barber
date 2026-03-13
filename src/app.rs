@@ -3,13 +3,14 @@ use std::sync::Arc;
 
 use crate::audio::decode::{self, AudioBuffer};
 use crate::audio::export;
+use crate::audio::levels::AudioLevels;
 use crate::audio::peaks::PeakData;
 use crate::audio::playback::PlaybackEngine;
 use crate::edit::{EditList, Region};
 use crate::history::EditHistory;
 use crate::keybinds::Keybinds;
 use crate::ui::menu::menu_bar_ui;
-use crate::ui::toolbar::{toolbar_ui, ToolbarAction};
+use crate::ui::toolbar::{meter_panel_ui, toolbar_ui, ToolbarAction};
 use crate::ui::waveform::{WaveformState, WaveformWidget};
 
 pub struct BarberApp {
@@ -23,6 +24,7 @@ pub struct BarberApp {
     history: EditHistory,
     clipboard: Option<Vec<Region>>,
     keybinds: Keybinds,
+    audio_levels: AudioLevels,
     last_action: Option<String>,
     loop_enabled: bool,
     follow_playhead: bool,
@@ -45,6 +47,7 @@ impl Default for BarberApp {
             history: EditHistory::new(),
             clipboard: None,
             keybinds: Keybinds::load(),
+            audio_levels: AudioLevels::new(),
             last_action: None,
             loop_enabled: false,
             follow_playhead: false,
@@ -123,6 +126,7 @@ impl eframe::App for BarberApp {
                 );
                 self.waveform_state.playhead = engine_pos;
                 self.waveform_state.phantom_playhead = None;
+                self.audio_levels.set_peaks(0.0, 0.0);
             }
         }
         self.was_playing = is_playing;
@@ -192,6 +196,13 @@ impl eframe::App for BarberApp {
                 });
             });
         });
+
+        egui::SidePanel::right("meter_panel")
+            .resizable(false)
+            .exact_width(94.0)
+            .show(ctx, |ui| {
+                meter_panel_ui(ui, &self.audio_levels);
+            });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             if let (Some(peaks), Some(edit_list)) = (&self.peak_data, &self.edit_list) {
@@ -347,20 +358,24 @@ impl BarberApp {
             }
             ToolbarAction::GoToInPoint => {
                 self.waveform_state.playhead = self.waveform_state.in_point;
+                self.seek_if_playing(self.waveform_state.playhead);
                 self.waveform_state.ensure_visible(self.waveform_state.playhead);
             }
             ToolbarAction::GoToOutPoint => {
                 self.waveform_state.playhead = self.waveform_state.out_point;
+                self.seek_if_playing(self.waveform_state.playhead);
                 self.waveform_state.ensure_visible(self.waveform_state.playhead);
             }
             ToolbarAction::GoToStart => {
                 self.waveform_state.playhead = 0;
+                self.seek_if_playing(0);
                 self.waveform_state.ensure_visible(0);
             }
             ToolbarAction::GoToEnd => {
                 if let Some(el) = &self.edit_list {
                     let end = el.total_frames();
                     self.waveform_state.playhead = end;
+                    self.seek_if_playing(end);
                     self.waveform_state.ensure_visible(end);
                 }
             }
@@ -368,6 +383,7 @@ impl BarberApp {
                 let sr = self.audio_buffer.as_ref().map_or(44100, |b| b.sample_rate);
                 let step = (sr / 100).max(1) as usize;
                 self.waveform_state.playhead = self.waveform_state.playhead.saturating_sub(step);
+                self.seek_if_playing(self.waveform_state.playhead);
                 self.waveform_state.ensure_visible(self.waveform_state.playhead);
             }
             ToolbarAction::NudgeRight => {
@@ -375,7 +391,16 @@ impl BarberApp {
                 let step = (sr / 100).max(1) as usize;
                 let total = self.edit_list.as_ref().map_or(0, |el| el.total_frames());
                 self.waveform_state.playhead = (self.waveform_state.playhead + step).min(total);
+                self.seek_if_playing(self.waveform_state.playhead);
                 self.waveform_state.ensure_visible(self.waveform_state.playhead);
+            }
+            ToolbarAction::VolumeUp => {
+                let vol = (self.audio_levels.volume() + 0.05).min(2.0);
+                self.audio_levels.set_volume(vol);
+            }
+            ToolbarAction::VolumeDown => {
+                let vol = (self.audio_levels.volume() - 0.05).max(0.0);
+                self.audio_levels.set_volume(vol);
             }
             ToolbarAction::SelectAll => {
                 if let Some(el) = &self.edit_list {
@@ -405,7 +430,7 @@ impl BarberApp {
                 let peaks = PeakData::compute(&buffer);
                 let edit_list = EditList::from_length(buffer.num_frames);
 
-                let engine = PlaybackEngine::new(Arc::clone(&buffer), edit_list.clone());
+                let engine = PlaybackEngine::new(Arc::clone(&buffer), edit_list.clone(), self.audio_levels.clone());
                 match engine {
                     Ok(engine) => self.playback_engine = Some(engine),
                     Err(e) => self.error_message = Some(format!("Playback init failed: {}", e)),
@@ -660,6 +685,14 @@ impl BarberApp {
             el.fades_enabled = !el.fades_enabled;
         }
         self.sync_playback_engine();
+    }
+
+    fn seek_if_playing(&self, frame: usize) {
+        if let Some(engine) = &self.playback_engine {
+            if engine.is_playing() {
+                engine.seek(frame);
+            }
+        }
     }
 
     fn sync_playback_engine(&self) {

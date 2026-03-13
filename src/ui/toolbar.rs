@@ -1,3 +1,5 @@
+use crate::audio::levels::AudioLevels;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ToolbarAction {
     OpenFile,
@@ -33,6 +35,8 @@ pub enum ToolbarAction {
     GoToEnd,
     NudgeLeft,
     NudgeRight,
+    VolumeUp,
+    VolumeDown,
     Quit,
 }
 
@@ -72,4 +76,141 @@ pub fn toolbar_ui(
     });
 
     action
+}
+
+const DB_TICKS: &[(f32, &str)] = &[
+    (1.0, "0"),
+    (0.708, "-3"),
+    (0.501, "-6"),
+    (0.316, "-10"),
+    (0.178, "-15"),
+    (0.100, "-20"),
+    (0.032, "-30"),
+    (0.010, "-40"),
+];
+
+pub fn meter_panel_ui(ui: &mut egui::Ui, levels: &AudioLevels) {
+    let full_height = ui.available_height();
+    let (peak_l, peak_r) = levels.smoothed_peaks();
+
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+
+        // Fader
+        let mut vol = levels.volume();
+        let response = ui.scope(|ui| {
+            ui.spacing_mut().slider_width = full_height;
+            let slider = egui::Slider::new(&mut vol, 0.0..=2.0)
+                .show_value(false)
+                .vertical()
+                .clamping(egui::SliderClamping::Always);
+            ui.add(slider)
+        }).inner;
+        if response.changed() {
+            levels.set_volume(vol);
+        }
+        let dbl = ui.input(|i| {
+            i.pointer.button_double_clicked(egui::PointerButton::Primary)
+        });
+        if dbl && response.rect.contains(ui.input(|i| i.pointer.interact_pos().unwrap_or_default())) {
+            levels.set_volume(1.0);
+        }
+
+        // Unity gain notch
+        let unity_frac = 1.0 / 2.0; // 1.0 in 0..2 range
+        let notch_y = response.rect.max.y - response.rect.height() * unity_frac;
+        ui.painter().line_segment(
+            [
+                egui::pos2(response.rect.min.x, notch_y),
+                egui::pos2(response.rect.max.x, notch_y),
+            ],
+            egui::Stroke::new(1.0, egui::Color32::from_gray(140)),
+        );
+
+        ui.separator();
+
+        // Meters + ruler
+        draw_vertical_meter(ui, peak_l, full_height);
+        draw_vertical_meter(ui, peak_r, full_height);
+        draw_db_ruler(ui, full_height);
+    });
+}
+
+fn draw_vertical_meter(ui: &mut egui::Ui, level: f32, height: f32) {
+    let desired = egui::vec2(10.0, height);
+    let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+
+    painter.rect_filled(rect, 1.0, egui::Color32::from_gray(30));
+
+    let clamped = level.clamp(0.0, 1.0);
+    if clamped > 0.0 {
+        let fill_height = rect.height() * clamped;
+        let fill = egui::Rect::from_min_max(
+            egui::pos2(rect.min.x, rect.max.y - fill_height),
+            rect.max,
+        );
+
+        let green = egui::Color32::from_rgb(80, 200, 80);
+        let yellow = egui::Color32::from_rgb(255, 200, 0);
+        let red = egui::Color32::from_rgb(255, 60, 60);
+
+        let thresh_yellow = rect.max.y - rect.height() * 0.7;
+        let thresh_red = rect.max.y - rect.height() * 0.9;
+
+        // Green zone
+        let green_top = fill.min.y.max(thresh_yellow);
+        if green_top < rect.max.y {
+            painter.rect_filled(
+                egui::Rect::from_min_max(egui::pos2(fill.min.x, green_top), fill.max),
+                0.0, green,
+            );
+        }
+        // Yellow zone
+        if fill.min.y < thresh_yellow {
+            let yellow_top = fill.min.y.max(thresh_red);
+            painter.rect_filled(
+                egui::Rect::from_min_max(
+                    egui::pos2(fill.min.x, yellow_top),
+                    egui::pos2(fill.max.x, thresh_yellow),
+                ),
+                0.0, yellow,
+            );
+        }
+        // Red zone
+        if fill.min.y < thresh_red {
+            painter.rect_filled(
+                egui::Rect::from_min_max(
+                    fill.min,
+                    egui::pos2(fill.max.x, thresh_red),
+                ),
+                0.0, red,
+            );
+        }
+    }
+}
+
+fn draw_db_ruler(ui: &mut egui::Ui, height: f32) {
+    let desired = egui::vec2(24.0, height);
+    let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+
+    let font = egui::FontId::monospace(8.0);
+    let color = egui::Color32::from_gray(120);
+
+    for &(linear, label) in DB_TICKS {
+        let y = rect.max.y - rect.height() * linear;
+        if y < rect.min.y || y > rect.max.y { continue; }
+        painter.line_segment(
+            [egui::pos2(rect.min.x, y), egui::pos2(rect.min.x + 3.0, y)],
+            egui::Stroke::new(1.0, color),
+        );
+        painter.text(
+            egui::pos2(rect.min.x + 5.0, y),
+            egui::Align2::LEFT_CENTER,
+            label,
+            font.clone(),
+            color,
+        );
+    }
 }

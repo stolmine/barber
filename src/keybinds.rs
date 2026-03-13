@@ -51,6 +51,8 @@ impl Default for Keybinds {
         b.insert("GoToEnd".into(), k(false, false, false, "ArrowDown"));
         b.insert("NudgeLeft".into(), k(false, false, false, "ArrowLeft"));
         b.insert("NudgeRight".into(), k(false, false, false, "ArrowRight"));
+        b.insert("VolumeUp".into(), k(true, false, false, "ArrowUp"));
+        b.insert("VolumeDown".into(), k(true, false, false, "ArrowDown"));
         b.insert("Quit".into(), k(true, false, false, "Q"));
         Self { bindings: b }
     }
@@ -143,6 +145,8 @@ impl Keybinds {
                 "GoToEnd" if has_file => Some(ToolbarAction::GoToEnd),
                 "NudgeLeft" if has_file => Some(ToolbarAction::NudgeLeft),
                 "NudgeRight" if has_file => Some(ToolbarAction::NudgeRight),
+                "VolumeUp" => Some(ToolbarAction::VolumeUp),
+                "VolumeDown" => Some(ToolbarAction::VolumeDown),
                 "Quit" => Some(ToolbarAction::Quit),
                 _ => None,
             };

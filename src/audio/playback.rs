@@ -5,6 +5,7 @@ use coreaudio::audio_unit::render_callback::{self, data};
 use coreaudio::audio_unit::{AudioUnit, IOType};
 
 use crate::audio::decode::AudioBuffer;
+use crate::audio::levels::AudioLevels;
 use crate::edit::EditList;
 
 #[derive(Debug)]
@@ -44,7 +45,7 @@ pub struct PlaybackEngine {
 }
 
 impl PlaybackEngine {
-    pub fn new(buffer: Arc<AudioBuffer>, edit_list: EditList) -> Result<Self, PlaybackError> {
+    pub fn new(buffer: Arc<AudioBuffer>, edit_list: EditList, levels: AudioLevels) -> Result<Self, PlaybackError> {
         let state = Arc::new(Mutex::new(PlaybackState {
             playing: false,
             position: 0,
@@ -66,6 +67,7 @@ impl PlaybackEngine {
         let source_channels = buffer.channels as usize;
 
         let callback_state = Arc::clone(&state);
+        let callback_levels = levels;
 
         type Args = render_callback::Args<data::NonInterleaved<f32>>;
         audio_unit.set_render_callback(move |args: Args| {
@@ -89,6 +91,9 @@ impl PlaybackEngine {
 
             let total = guard.edit_list.total_frames();
             let rate_ratio = source_sample_rate / device_sample_rate;
+            let vol = callback_levels.volume();
+            let mut meter_l: f32 = 0.0;
+            let mut meter_r: f32 = 0.0;
 
             for i in 0..num_frames {
                 let pos = guard.position;
@@ -114,7 +119,7 @@ impl PlaybackEngine {
 
                 for (ch_idx, channel) in data.channels_mut().enumerate() {
                     if ch_idx < device_channels {
-                        channel[i] = match resolved {
+                        let pre_fader = match resolved {
                             Some((sf, gain, dc_offset)) => {
                                 let src_ch = ch_idx.min(source_channels - 1);
                                 (guard.buffer.samples[src_ch]
@@ -126,6 +131,10 @@ impl PlaybackEngine {
                             }
                             None => 0.0,
                         };
+                        let abs = pre_fader.abs();
+                        if ch_idx == 0 { meter_l = meter_l.max(abs); }
+                        else if ch_idx == 1 { meter_r = meter_r.max(abs); }
+                        channel[i] = pre_fader * vol;
                     }
                 }
 
@@ -134,6 +143,9 @@ impl PlaybackEngine {
                 guard.position += advance;
                 guard.position_frac -= advance as f64;
             }
+
+            if source_channels == 1 { meter_r = meter_l; }
+            callback_levels.set_peaks(meter_l, meter_r);
 
             Ok(())
         })?;

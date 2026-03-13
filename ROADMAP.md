@@ -11,7 +11,9 @@ A simple, fast, lightweight audio editor built from purely open source Rust comp
 - **Parallelism:** `rayon`
 - **File dialogs:** `rfd`
 
-## v0.1 Features (shipped)
+## Shipped Features
+
+### v0.1
 1. Open audio files (WAV, AIFF, MP3, FLAC via symphonia)
 2. Waveform rendering with zoom/scroll
 3. Audio playback with CoreAudio
@@ -19,7 +21,7 @@ A simple, fast, lightweight audio editor built from purely open source Rust comp
 5. Ripple delete and crop operations
 6. Export to WAV
 
-## v0.1.1 Features (shipped)
+### v0.1.1
 7. Gap delete, cut/copy/paste editing operations
 8. Undo/redo history stack
 9. Timeline ruler (adaptive, bottom edge)
@@ -29,38 +31,61 @@ A simple, fast, lightweight audio editor built from purely open source Rust comp
 13. Context-aware zoom-to-fit (selection or all)
 14. 0dB normalized waveforms with visual clipping
 
-## v0.1.2 Features (shipped)
+### v0.1.2
 15. Loop playback — toggle loop mode; loops selection or full file (L key)
 16. Play selection — Shift+Space auditions selected region only
 17. Follow playhead — auto-scroll viewport to keep playhead visible (F key)
 18. Right-click context menu — selection-aware edit actions on waveform
 
-## v0.1.3 Features (shipped)
+### v0.1.3
 19. Snap-to-zero-crossing — selection edges auto-snap to nearest zero crossing on release
 20. Duplicate region — Cmd+D copies selected region and inserts immediately after
 21. Phantom playhead — ghost marker at play-start position with adaptive contrast over waveform
 
+### v0.1.4
+22. Menu bar — File/Edit/Transport/View menus replacing toolbar buttons
+23. Slim transport bar — Play/Pause, Stop, Loop, Follow only
+24. Editable keybind system — TOML-configurable at ~/.config/barber/keybinds.toml
+25. Reverse selection — Cmd+R reverses sample order in selected region
+26. Normalize — per-selection or whole-file 0dB peak normalization via per-region gain
+27. Waveform rendering resolves edit→source per pixel via `for_each_source_range` — correct display after all edits
+28. Cut/Copy/Paste hotkeys fixed — detect egui `Event::Cut/Copy/Paste` events alongside `key_pressed`
+
+### v0.1.5
+29. Region refactor — Region struct with kind enum, gain, dc_offset, fade_in/fade_out fields
+30. Boundary fades — auto-apply 128-frame (~3ms) fade in/out at edit splice points to prevent clicks
+31. Toggle fades — Edit > Toggle Fades to enable/disable boundary fade envelopes
+32. DC offset removal — Edit > Remove DC Offset (Cmd+Shift+D) centers waveform on zero
+33. Prompt to save on quit — dirty tracking with confirmation dialog on close/Cmd+Q
+34. Select all — Cmd+A or double-click waveform selects entire file
+35. Quit keybind — Cmd+Q with macOS native menu disabled to allow app-level intercept
+
+### v0.1.6
+36. Play from selection — Play starts from selection start when a region is selected
+37. Action history status bar — right-justified last action readout with affected timespan
+38. Full-file reverse — Reverse operates on entire file when no selection, available without selection in menu/keybinds
+39. Full-file remove DC — Remove DC operates on entire file when no selection
+
+### v0.1.7
+40. In/out points — Shift+I / Shift+O set markers at playhead, I / O jump to them. Dashed green/red lines. Clamped after edits, ripple-shifted on ripple delete
+41. Keystroke tracking — status bar shows held modifier keys (⌘⇧⌥) live, groundwork for vim-style chained keybinds
+42. Custom font — JetBrains Mono Nerd Font bundled for full glyph coverage (modifier symbols, nerd font icons)
+43. Keybind forward-compat — new default keybinds merge into existing user config without overwriting customizations
+
+### v0.1.8
+44. In/out constrained playback — Play respects in/out bounds: stops at out_point, loops between in/out when loop enabled. Selection still overrides in/out (DAW convention)
+45. Arrow key navigation — Up/Down jump to start/end of file, Left/Right nudge playhead by 10ms. All configurable via keybinds.toml
+46. Stop respects in/out — Stop resets playhead to in_point when in/out bounds are set, otherwise resets to 0
+
 ## Architecture
 
-### Module Map
-
-| File | Lines | Purpose |
-|------|-------|---------|
-| `Cargo.toml` | ~25 | Dependencies |
-| `src/main.rs` | ~20 | Entry point, eframe launch |
-| `src/app.rs` | ~415 | Main `BarberApp` struct, orchestration |
-| `src/edit.rs` | ~280 | Edit list data structure (regions, all edit ops) |
-| `src/edit_tests.rs` | ~210 | Edit list unit tests |
-| `src/history.rs` | ~45 | Undo/redo history stack |
-| `src/audio/mod.rs` | ~5 | Module re-exports |
-| `src/audio/zero_crossing.rs` | ~25 | Zero-crossing detection for selection snapping |
-| `src/audio/decode.rs` | ~120 | Symphonia-based PCM decoding |
-| `src/audio/playback.rs` | ~210 | CoreAudio playback engine |
-| `src/audio/export.rs` | ~50 | WAV export via hound |
-| `src/audio/peaks.rs` | ~100 | Peak/RMS mipmap computation with rayon |
-| `src/ui/mod.rs` | ~5 | Module re-exports |
-| `src/ui/waveform.rs` | ~445 | Custom egui waveform widget with ruler |
-| `src/ui/toolbar.rs` | ~230 | Toolbar with transport/zoom/edit controls |
+### Design Decisions
+1. **Synchronous decoding (v0.1):** File open blocks UI. Fine for files <50MB. Async is v0.2.
+2. **Mutex in audio callback:** `try_lock()` avoids priority inversion; outputs silence on contention (~5ms). Lock-free ring buffer is v0.2.
+3. **Non-destructive editing:** Original AudioBuffer never modified. Undo is trivial (snapshot `Vec<Region>`).
+4. **Peak data references source frames:** Waveform widget translates edit-space → source-space before querying peaks. No recomputation after edits.
+5. **macOS-only (v0.1):** CoreAudio. Cross-platform via `cpal` is future work.
+6. **f32 internal format:** Simplifies pipeline, ~4x memory vs i16, fine for modern machines.
 
 ### Core Data Types
 
@@ -83,117 +108,23 @@ A simple, fast, lightweight audio editor built from purely open source Rust comp
 ### Dependency Graph
 
 ```
-Project Setup
-   |
-   +--> Audio Decoding  ----+
-   |                        |
-   +--> Peak Computation ---+--> Waveform Widget --+
-   |                        |                      |
-   +--> Edit List ----------+--> Playback ---------+--> App Integration
-   |                                               |
-   +--> Toolbar UI --------------------------------+
-   |                                               |
-   +--> Export ------------------------------------+
+Audio Decoding ------+
+                     |
+Peak Computation ----+--> Waveform Widget --+
+                     |                      |
+Edit List -----------+--> Playback ---------+--> App Integration
+                                            |
+Toolbar UI ---------------------------------+
+                                            |
+Export -------------------------------------+
 ```
 
-## Implementation Tasks
-
-### Task 1: Project Setup
-- Cargo.toml with all dependencies
-- `main.rs` — env_logger init, eframe launch
-- Module stubs for all files
-- **Deliverable:** `cargo run` shows empty egui window titled "Barber"
-
-### Task 2: Audio Decoding (`audio/decode.rs`)
-- Open file → MediaSourceStream → probe → decode loop
-- Convert all formats to f32 PCM AudioBuffer
-- Handle WAV, AIFF, MP3, FLAC via symphonia features
-
-### Task 3: Peak Computation (`audio/peaks.rs`)
-- Level 0: block size 256, compute (min, max) per block with rayon
-- Build ~12-14 mipmap levels by merging pairs
-- `get_peaks()` selects appropriate mip level for requested zoom
-
-### Task 4: Edit List (`edit.rs`)
-- Region-based non-destructive edit list
-- `from_length()`, `total_frames()`, `resolve()`, `iter_source_frames()`
-- `ripple_delete()` and `crop()` operations
-
-### Task 5: Audio Playback (`audio/playback.rs`)
-- CoreAudio output AudioUnit with render callback
-- `Arc<Mutex<PlaybackState>>` shared between audio thread and UI
-- `try_lock()` in callback, output silence on contention
-- Play, pause, stop, seek, position query
-
-### Task 6: Waveform Widget (`ui/waveform.rs`)
-- Custom egui widget using `allocate_painter`
-- Render peaks as vertical min/max lines per pixel
-- Walk edit list regions to map edit-space → source-space for peak lookup
-- Zoom (Cmd+scroll), scroll (horizontal scroll/shift+scroll)
-- Click-and-drag selection, click-to-place playhead
-- Playhead rendering as vertical line
-
-### Task 7: Toolbar UI (`ui/toolbar.rs`)
-- Horizontal layout in TopBottomPanel
-- File: Open, Export | Transport: Play/Pause, Stop | Zoom: In, Out, Fit | Edit: Delete, Crop
-- Conditional enable/disable based on state
-- Keyboard shortcuts: Space (play/pause), Delete (ripple delete), Cmd+E (export)
-
-### Task 8: Main App Integration (`app.rs`)
-- Wire all modules together in `BarberApp`
-- Handle toolbar actions → dispatch to appropriate modules
-- Sync playhead from playback engine each frame
-- Status bar with file info, duration, selection range
-- `request_repaint()` during playback for smooth playhead animation
-
-### Task 9: WAV Export (`audio/export.rs`)
-- Use hound to write 16-bit WAV
-- Walk edit list to resolve source frames
-- Convert f32 → i16, write interleaved
-
-## Design Decisions
-
-1. **Synchronous decoding (v0.1):** File open blocks UI. Fine for files <50MB. Async is v0.2.
-2. **Mutex in audio callback:** `try_lock()` avoids priority inversion; outputs silence on contention (~5ms). Lock-free ring buffer is v0.2.
-3. **Non-destructive editing:** Original AudioBuffer never modified. Undo is trivial to add (snapshot `Vec<Region>`).
-4. **Peak data references source frames:** Waveform widget translates edit-space → source-space before querying peaks. No recomputation after edits.
-5. **macOS-only (v0.1):** CoreAudio. Cross-platform via `cpal` is future work.
-6. **f32 internal format:** Simplifies pipeline, ~4x memory vs i16, fine for modern machines.
-
-## v0.1.4 Features (shipped)
-22. Menu bar — File/Edit/Transport/View menus replacing toolbar buttons
-23. Slim transport bar — Play/Pause, Stop, Loop, Follow only
-24. Editable keybind system — TOML-configurable at ~/.config/barber/keybinds.toml
-25. Reverse selection — Cmd+R reverses sample order in selected region
-26. Normalize — per-selection or whole-file 0dB peak normalization via per-region gain
-27. Waveform rendering resolves edit→source per pixel via `for_each_source_range` — correct display after all edits
-28. Cut/Copy/Paste hotkeys fixed — detect egui `Event::Cut/Copy/Paste` events alongside `key_pressed`
-
-## v0.1.5 Features (shipped)
-29. Region refactor — Region struct with kind enum, gain, dc_offset, fade_in/fade_out fields
-30. Boundary fades — auto-apply 128-frame (~3ms) fade in/out at edit splice points to prevent clicks
-31. Toggle fades — Edit > Toggle Fades to enable/disable boundary fade envelopes
-32. DC offset removal — Edit > Remove DC Offset (Cmd+Shift+D) centers waveform on zero
-33. Prompt to save on quit — dirty tracking with confirmation dialog on close/Cmd+Q
-34. Select all — Cmd+A or double-click waveform selects entire file
-35. Quit keybind — Cmd+Q with macOS native menu disabled to allow app-level intercept
-
-## v0.1.6 Features (shipped)
-36. Play from selection — Play starts from selection start when a region is selected
-37. Action history status bar — right-justified last action readout with affected timespan
-38. Full-file reverse — Reverse operates on entire file when no selection, available without selection in menu/keybinds
-39. Full-file remove DC — Remove DC operates on entire file when no selection (already worked, gate was correct)
-
-## v0.1.7 Features (shipped)
-40. In/out points — Shift+I / Shift+O set markers at playhead, I / O jump to them. Dashed green/red lines. Clamped after edits, ripple-shifted on ripple delete
-41. Keystroke tracking — status bar shows held modifier keys (⌘⇧⌥) live, groundwork for vim-style chained keybinds
-42. Custom font — JetBrains Mono Nerd Font bundled for full glyph coverage (modifier symbols, nerd font icons)
-43. Keybind forward-compat — new default keybinds merge into existing user config without overwriting customizations
-
-## v0.1.8 Features (shipped)
-44. In/out constrained playback — Play respects in/out bounds: stops at out_point, loops between in/out when loop enabled. Selection still overrides in/out (DAW convention)
-45. Arrow key navigation — Up/Down jump to start/end of file, Left/Right nudge playhead by 10ms. All configurable via keybinds.toml
-46. Stop respects in/out — Stop resets playhead to in_point when in/out bounds are set, otherwise resets to 0
+### v0.1.9
+47. Volume fader — vertical fader in right side panel with linear throw (0–2x), double-click to reset to unity, unity gain notch indicator
+48. Stereo metering — real-time pre-fader peak meters (L/R) with green/yellow/red segments, smoothed decay, and dB ruler (-40 to 0 dB)
+49. Lock-free audio levels — AtomicU32-based volume and peak transport between audio callback and UI thread (no mutex contention)
+50. Volume keybinds — Cmd+Up/Down adjusts playback volume in 0.05 steps
+51. Live navigation during playback — GoToStart, GoToEnd, GoToIn, GoToOut, NudgeLeft, NudgeRight all seek the engine while playing
 
 ## v0.2 Wishlist
 
@@ -210,7 +141,6 @@ Project Setup
 
 ### Playback
 - **Speed/pitch control:** Variable playback rate with optional pitch preservation
-- **Playback volume control:** Separate output gain from waveform amplitude
 
 ### Interaction
 - **Trackpad gestures:** Native pinch-to-zoom and two-finger scroll
@@ -220,7 +150,6 @@ Project Setup
 - **Custom styling for in/out points:** Current dashed lines are hard to see — need better visual treatment (thicker, labels, triangular markers, or glow). Add shading/tint of the region between in and out points when they are set off defaults
 - **Sexier UI:** Better colors, typography, spacing, custom styling
 - **Tabbed concurrent projects:** Open multiple files, splice material between them
-- **Metering:** just simple stereo metering with themable colors, could be cute with an ascii option borrowed from monokit
 - **Minimap:** adaptive overview of waveform when zoomed
 
 ### Infrastructure
