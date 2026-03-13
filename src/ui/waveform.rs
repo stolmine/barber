@@ -114,7 +114,7 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
         );
 
         let total_frames = self.edit_list.total_frames();
-        let width = rect.width();
+        let width = waveform_rect.width();
 
         self.state.last_width = width;
 
@@ -173,14 +173,14 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
         });
 
         painter.rect_filled(rect, 0.0, Color32::from_rgb(20, 20, 24));
-        draw_ruler(&painter, self.state, rect, rect.bottom(), self.sample_rate);
+        draw_ruler(&painter, self.state, waveform_rect, rect.bottom(), self.sample_rate);
+
+        let num_channels = self.peaks.channels();
+        let channel_height = waveform_rect.height() / num_channels.max(1) as f32;
 
         if total_frames == 0 || width <= 0.0 {
             return response;
         }
-
-        let num_channels = self.peaks.channels();
-        let channel_height = waveform_rect.height() / num_channels.max(1) as f32;
 
         let start_frame = self.state.scroll_offset.max(0.0) as usize;
         let end_frame = (self.state.scroll_offset + width as f64 * self.state.zoom) as usize;
@@ -488,3 +488,4 @@ fn draw_ruler(painter: &Painter, state: &WaveformState, rect: Rect, ruler_bottom
         t += interval;
     }
 }
+

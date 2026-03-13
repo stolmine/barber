@@ -1,5 +1,24 @@
 const DEFAULT_FADE_LEN: usize = 128;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FadeCurve {
+    Linear,
+    Exponential,
+    Logarithmic,
+    SCurve,
+}
+
+impl FadeCurve {
+    pub fn apply(self, t: f32) -> f32 {
+        match self {
+            FadeCurve::Linear => t,
+            FadeCurve::Exponential => t * t,
+            FadeCurve::Logarithmic => t.sqrt(),
+            FadeCurve::SCurve => 3.0 * t * t - 2.0 * t * t * t,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum RegionKind {
     Source { source_start: usize, source_end: usize },
@@ -14,17 +33,19 @@ pub struct Region {
     pub dc_offset: f32,
     pub fade_in: usize,
     pub fade_out: usize,
+    pub fade_in_curve: FadeCurve,
+    pub fade_out_curve: FadeCurve,
 }
 
 impl Region {
     pub fn source(source_start: usize, source_end: usize) -> Self {
-        Self { kind: RegionKind::Source { source_start, source_end }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0 }
+        Self { kind: RegionKind::Source { source_start, source_end }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0, fade_in_curve: FadeCurve::Linear, fade_out_curve: FadeCurve::Linear }
     }
     pub fn silence(len: usize) -> Self {
-        Self { kind: RegionKind::Silence { len }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0 }
+        Self { kind: RegionKind::Silence { len }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0, fade_in_curve: FadeCurve::Linear, fade_out_curve: FadeCurve::Linear }
     }
     pub fn reversed(source_start: usize, source_end: usize) -> Self {
-        Self { kind: RegionKind::Reversed { source_start, source_end }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0 }
+        Self { kind: RegionKind::Reversed { source_start, source_end }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0, fade_in_curve: FadeCurve::Linear, fade_out_curve: FadeCurve::Linear }
     }
 
     pub fn len(&self) -> usize {
@@ -62,10 +83,10 @@ impl EditList {
                 let pos = edit_frame - offset;
                 let fade_gain = if self.fades_enabled {
                     let fade_in_env = if region.fade_in > 0 && pos < region.fade_in {
-                        pos as f32 / region.fade_in as f32
+                        region.fade_in_curve.apply(pos as f32 / region.fade_in as f32)
                     } else { 1.0 };
                     let fade_out_env = if region.fade_out > 0 && pos >= rlen - region.fade_out {
-                        (rlen - 1 - pos) as f32 / region.fade_out as f32
+                        region.fade_out_curve.apply((rlen - 1 - pos) as f32 / region.fade_out as f32)
                     } else { 1.0 };
                     fade_in_env * fade_out_env
                 } else { 1.0 };
@@ -113,10 +134,10 @@ impl EditList {
                     let pos = edit_pos - current_offset;
                     let fade_gain = if self.fades_enabled {
                         let fade_in_env = if region.fade_in > 0 && pos < region.fade_in {
-                            pos as f32 / region.fade_in as f32
+                            region.fade_in_curve.apply(pos as f32 / region.fade_in as f32)
                         } else { 1.0 };
                         let fade_out_env = if region.fade_out > 0 && pos >= rlen - region.fade_out {
-                            (rlen - 1 - pos) as f32 / region.fade_out as f32
+                            region.fade_out_curve.apply((rlen - 1 - pos) as f32 / region.fade_out as f32)
                         } else { 1.0 };
                         fade_in_env * fade_out_env
                     } else { 1.0 };
@@ -185,7 +206,7 @@ impl EditList {
         self.regions = new_regions;
     }
 
-    pub fn ripple_delete(&mut self, start: usize, end: usize) {
+    fn ripple_delete_inner(&mut self, start: usize, end: usize, apply_boundary: bool) {
         if start >= end {
             return;
         }
@@ -203,7 +224,13 @@ impl EditList {
                 out.push(region.clone());
             }
         });
-        self.apply_boundary_fades_at(start);
+        if apply_boundary {
+            self.apply_boundary_fades_at(start);
+        }
+    }
+
+    pub fn ripple_delete(&mut self, start: usize, end: usize) {
+        self.ripple_delete_inner(start, end, true);
     }
 
     pub fn crop(&mut self, start: usize, end: usize) {
@@ -242,7 +269,7 @@ impl EditList {
         result
     }
 
-    pub fn insert(&mut self, position: usize, regions: &[Region]) {
+    fn insert_inner(&mut self, position: usize, regions: &[Region], apply_boundary: bool) {
         if regions.is_empty() {
             return;
         }
@@ -274,8 +301,14 @@ impl EditList {
             new_regions.extend_from_slice(regions);
         }
         self.regions = new_regions;
-        self.apply_boundary_fades_at(position);
-        self.apply_boundary_fades_at(position + insert_len);
+        if apply_boundary {
+            self.apply_boundary_fades_at(position);
+            self.apply_boundary_fades_at(position + insert_len);
+        }
+    }
+
+    pub fn insert(&mut self, position: usize, regions: &[Region]) {
+        self.insert_inner(position, regions, true);
     }
 
     pub fn gap_delete(&mut self, start: usize, end: usize) {
@@ -334,12 +367,23 @@ impl EditList {
             if overlap_start < overlap_end {
                 let inner_start = overlap_start - r_start;
                 let inner_end = overlap_end - r_start;
+                let mid = (inner_start + inner_end) / 2;
+                let fade_gain = if self.fades_enabled {
+                    let fi = if region.fade_in > 0 && mid < region.fade_in {
+                        region.fade_in_curve.apply(mid as f32 / region.fade_in as f32)
+                    } else { 1.0 };
+                    let fo = if region.fade_out > 0 && mid >= rlen - region.fade_out {
+                        region.fade_out_curve.apply((rlen - 1 - mid) as f32 / region.fade_out as f32)
+                    } else { 1.0 };
+                    fi * fo
+                } else { 1.0 };
+                let gain = region.gain * fade_gain;
                 match &region.kind {
                     RegionKind::Source { source_start, .. } => {
-                        f(source_start + inner_start, source_start + inner_end, region.gain);
+                        f(source_start + inner_start, source_start + inner_end, gain);
                     }
                     RegionKind::Reversed { source_end, .. } => {
-                        f(source_end - inner_end, source_end - inner_start, region.gain);
+                        f(source_end - inner_end, source_end - inner_start, gain);
                     }
                     RegionKind::Silence { .. } => {}
                 }
@@ -366,6 +410,36 @@ impl EditList {
         }
         self.ripple_delete(start, end);
         self.insert(start, &extracted);
+    }
+
+    pub fn apply_fade_in(&mut self, start: usize, end: usize, curve: FadeCurve) {
+        if start >= end { return; }
+        let fade_len = end - start;
+        let mut extracted = self.extract_regions(start, end);
+        for region in &mut extracted {
+            let rlen = region.len();
+            region.fade_in = fade_len.min(rlen);
+            region.fade_in_curve = curve;
+        }
+        log::debug!("apply_fade_in: fade_len={}, regions={}, first_fade_in={}",
+            fade_len, extracted.len(), extracted.first().map_or(0, |r| r.fade_in));
+        self.ripple_delete_inner(start, end, false);
+        self.insert_inner(start, &extracted, false);
+    }
+
+    pub fn apply_fade_out(&mut self, start: usize, end: usize, curve: FadeCurve) {
+        if start >= end { return; }
+        let fade_len = end - start;
+        let mut extracted = self.extract_regions(start, end);
+        for region in &mut extracted {
+            let rlen = region.len();
+            region.fade_out = fade_len.min(rlen);
+            region.fade_out_curve = curve;
+        }
+        log::debug!("apply_fade_out: fade_len={}, regions={}, first_fade_out={}",
+            fade_len, extracted.len(), extracted.first().map_or(0, |r| r.fade_out));
+        self.ripple_delete_inner(start, end, false);
+        self.insert_inner(start, &extracted, false);
     }
 
     pub fn apply_boundary_fades(&mut self, start_idx: usize, end_idx: usize) {

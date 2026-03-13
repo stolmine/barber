@@ -99,10 +99,11 @@ A simple, fast, lightweight audio editor built from purely open source Rust comp
 - Computed once after decode, never recomputed after edits
 
 **EditList** (`edit.rs`):
-- `regions: Vec<Region>` where `Region { source_start, source_end }`
+- `regions: Vec<Region>` where `Region { kind, gain, dc_offset, fade_in, fade_out, fade_in_curve, fade_out_curve }`
 - Non-destructive: original AudioBuffer is never modified
-- `ripple_delete(start, end)` — remove range in edit-space
-- `crop(start, end)` — keep only range in edit-space
+- `ripple_delete(start, end)` / `insert(position, regions)` — auto-apply boundary fades at splice points
+- `ripple_delete_inner` / `insert_inner` — variants with `apply_boundary` flag for fade operations that must preserve user-set fades
+- `apply_fade_in` / `apply_fade_out` — set user fades without boundary fade interference
 - `resolve(edit_frame) -> source_frame` — maps edit-space to source-space
 
 ### Dependency Graph
@@ -129,6 +130,10 @@ Export -------------------------------------+
 ### v0.2.0
 52. Minimap — Ableton-style arrangement overview bar above status bar. Full waveform always visible, viewport rectangle with dimmed outside regions. Click outside to jump, drag inside to pan, vertical drag to zoom, drag edges to resize view, double-click to zoom-to-fit. Press-frame hit detection for reliable edge grab.
 
+### v0.2.1
+53. Fix fades — refactored `ripple_delete` and `insert` into inner variants with `apply_boundary` flag so `apply_fade_in`/`apply_fade_out` no longer have their user-set fade values overwritten by 128-sample boundary fades
+54. Remove amplitude ruler — removed unhelpful linear 0–1 amplitude ruler from waveform left edge; meter panel dB ruler is sufficient. Waveform now uses full available width
+
 ## v0.2 Wishlist
 
 ### Editing
@@ -137,7 +142,6 @@ Export -------------------------------------+
 - **Apply fades in or out, with selectable curves:** the question will be how to select curves
 
 ### Waveform Display
-- **Amplitude ruler:** Per-channel amplitude scale on left side
 - **Vertical zoom:** Scale waveform amplitude independently of window height
 - **Amplitude control:** Gain adjustment with live waveform preview
 - **Anti-aliased waveforms:** Smooth rendering instead of per-pixel lines
