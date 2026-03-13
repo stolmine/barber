@@ -60,8 +60,8 @@ impl AudioLevels {
         let raw_r = f32::from_bits(self.peak_r.load(Relaxed));
         let prev_l = f32::from_bits(self.display_l.load(Relaxed));
         let prev_r = f32::from_bits(self.display_r.load(Relaxed));
-        let l = raw_l.max(prev_l * 0.85);
-        let r = raw_r.max(prev_r * 0.85);
+        let l = raw_l.max(prev_l * 0.93);
+        let r = raw_r.max(prev_r * 0.93);
         self.display_l.store(l.to_bits(), Relaxed);
         self.display_r.store(r.to_bits(), Relaxed);
         (l, r)
