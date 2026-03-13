@@ -43,6 +43,14 @@ impl Default for Keybinds {
         b.insert("Normalize".into(), k(true, true, false, "N"));
         b.insert("RemoveDC".into(), k(true, true, false, "D"));
         b.insert("SelectAll".into(), k(true, false, false, "A"));
+        b.insert("SetInPoint".into(), k(false, true, false, "I"));
+        b.insert("SetOutPoint".into(), k(false, true, false, "O"));
+        b.insert("GoToInPoint".into(), k(false, false, false, "I"));
+        b.insert("GoToOutPoint".into(), k(false, false, false, "O"));
+        b.insert("GoToStart".into(), k(false, false, false, "ArrowUp"));
+        b.insert("GoToEnd".into(), k(false, false, false, "ArrowDown"));
+        b.insert("NudgeLeft".into(), k(false, false, false, "ArrowLeft"));
+        b.insert("NudgeRight".into(), k(false, false, false, "ArrowRight"));
         b.insert("Quit".into(), k(true, false, false, "Q"));
         Self { bindings: b }
     }
@@ -54,12 +62,15 @@ impl Keybinds {
             .unwrap_or_else(|| std::path::PathBuf::from("."))
             .join("barber");
         let path = config_dir.join("keybinds.toml");
+        let defaults = Self::default();
         if let Ok(contents) = std::fs::read_to_string(&path) {
-            if let Ok(kb) = toml::from_str::<Keybinds>(&contents) {
+            if let Ok(mut kb) = toml::from_str::<Keybinds>(&contents) {
+                for (name, combo) in &defaults.bindings {
+                    kb.bindings.entry(name.clone()).or_insert_with(|| combo.clone());
+                }
                 return kb;
             }
         }
-        let defaults = Self::default();
         if std::fs::create_dir_all(&config_dir).is_ok() {
             let _ = std::fs::write(&path, toml::to_string_pretty(&defaults).unwrap_or_default());
         }
@@ -124,6 +135,14 @@ impl Keybinds {
                 "RemoveDC" if has_file => Some(ToolbarAction::RemoveDC),
                 "ToggleFade" if has_file => Some(ToolbarAction::ToggleFade),
                 "SelectAll" if has_file => Some(ToolbarAction::SelectAll),
+                "SetInPoint" if has_file => Some(ToolbarAction::SetInPoint),
+                "SetOutPoint" if has_file => Some(ToolbarAction::SetOutPoint),
+                "GoToInPoint" if has_file => Some(ToolbarAction::GoToInPoint),
+                "GoToOutPoint" if has_file => Some(ToolbarAction::GoToOutPoint),
+                "GoToStart" if has_file => Some(ToolbarAction::GoToStart),
+                "GoToEnd" if has_file => Some(ToolbarAction::GoToEnd),
+                "NudgeLeft" if has_file => Some(ToolbarAction::NudgeLeft),
+                "NudgeRight" if has_file => Some(ToolbarAction::NudgeRight),
                 "Quit" => Some(ToolbarAction::Quit),
                 _ => None,
             };
@@ -160,6 +179,10 @@ fn parse_key(name: &str) -> Option<egui::Key> {
         "Delete" => Some(Key::Delete),
         "Escape" => Some(Key::Escape),
         "Enter" => Some(Key::Enter),
+        "ArrowUp" => Some(Key::ArrowUp),
+        "ArrowDown" => Some(Key::ArrowDown),
+        "ArrowLeft" => Some(Key::ArrowLeft),
+        "ArrowRight" => Some(Key::ArrowRight),
         _ => None,
     }
 }

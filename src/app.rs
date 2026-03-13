@@ -29,6 +29,7 @@ pub struct BarberApp {
     was_playing: bool,
     dirty: bool,
     show_quit_dialog: bool,
+    prev_modifiers: egui::Modifiers,
 }
 
 impl Default for BarberApp {
@@ -50,6 +51,7 @@ impl Default for BarberApp {
             was_playing: false,
             dirty: false,
             show_quit_dialog: false,
+            prev_modifiers: egui::Modifiers::NONE,
         }
     }
 }
@@ -141,6 +143,16 @@ impl eframe::App for BarberApp {
             }
         });
 
+        let mods = ctx.input(|i| i.modifiers);
+        if mods != self.prev_modifiers {
+            self.prev_modifiers = mods;
+            ctx.request_repaint();
+        }
+        let mut held = String::new();
+        if mods.command { held.push_str("\u{2318}"); }
+        if mods.shift { held.push_str("\u{21e7}"); }
+        if mods.alt { held.push_str("\u{2325}"); }
+
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if let Some(path) = &self.file_path {
@@ -170,11 +182,14 @@ impl eframe::App for BarberApp {
                 if let Some(err) = &self.error_message {
                     ui.colored_label(egui::Color32::RED, err);
                 }
-                if let Some(action_name) = &self.last_action {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if let Some(action_name) = &self.last_action {
                         ui.label(action_name.as_str());
-                    });
-                }
+                    }
+                    if !held.is_empty() {
+                        ui.label(&held);
+                    }
+                });
             });
         });
 
@@ -232,19 +247,32 @@ impl BarberApp {
             ToolbarAction::Export => self.export_file(),
             ToolbarAction::Play => {
                 if let (Some(engine), Some(el)) = (&self.playback_engine, &self.edit_list) {
+                    let ws = &self.waveform_state;
                     let total = el.total_frames();
-                    let play_from = self.waveform_state.selection
-                        .map(|(s, _)| s)
-                        .unwrap_or(self.waveform_state.playhead);
+                    let has_io = ws.in_point > 0 || ws.out_point < total;
+                    let selection = ws.selection;
+
+                    let play_from = selection.map(|(s, _)| s)
+                        .unwrap_or(ws.playhead);
                     let play_from = if play_from >= total && total > 0 { 0 } else { play_from };
+
                     engine.seek(play_from);
-                    engine.set_stop_at(None);
+
                     if self.loop_enabled {
-                        let (start, end) = self.waveform_state.selection
+                        let (start, end) = selection
                             .map(|(s, e)| (s, Some(e)))
+                            .or_else(|| has_io.then(|| (ws.in_point, Some(ws.out_point))))
                             .unwrap_or((0, None));
-                        engine.set_loop(self.loop_enabled, start, end);
+                        engine.set_loop(true, start, end);
+                        engine.set_stop_at(None);
+                    } else {
+                        engine.set_loop(false, 0, None);
+                        let stop = selection
+                            .map(|(_, e)| e)
+                            .or_else(|| has_io.then(|| ws.out_point));
+                        engine.set_stop_at(stop);
                     }
+
                     self.waveform_state.phantom_playhead = Some(play_from);
                     engine.play();
                 }
@@ -257,7 +285,9 @@ impl BarberApp {
             ToolbarAction::Stop => {
                 if let Some(engine) = &self.playback_engine {
                     engine.stop();
-                    self.waveform_state.playhead = 0;
+                    let total = self.edit_list.as_ref().map_or(0, |el| el.total_frames());
+                    let has_io = self.waveform_state.in_point > 0 || self.waveform_state.out_point < total;
+                    self.waveform_state.playhead = if has_io { self.waveform_state.in_point } else { 0 };
                     self.waveform_state.phantom_playhead = None;
                 }
             }
@@ -284,9 +314,12 @@ impl BarberApp {
             ToolbarAction::Redo => self.redo(),
             ToolbarAction::ToggleLoop => {
                 self.loop_enabled = !self.loop_enabled;
-                if let Some(engine) = &self.playback_engine {
+                if let (Some(engine), Some(el)) = (&self.playback_engine, &self.edit_list) {
+                    let total = el.total_frames();
+                    let has_io = self.waveform_state.in_point > 0 || self.waveform_state.out_point < total;
                     let (start, end) = self.waveform_state.selection
                         .map(|(s, e)| (s, Some(e)))
+                        .or_else(|| has_io.then(|| (self.waveform_state.in_point, Some(self.waveform_state.out_point))))
                         .unwrap_or((0, None));
                     engine.set_loop(self.loop_enabled, start, end);
                 }
@@ -306,6 +339,44 @@ impl BarberApp {
             ToolbarAction::Normalize => self.normalize(),
             ToolbarAction::RemoveDC => self.remove_dc_offset(),
             ToolbarAction::ToggleFade => self.toggle_fades(),
+            ToolbarAction::SetInPoint => {
+                self.waveform_state.in_point = self.waveform_state.playhead;
+            }
+            ToolbarAction::SetOutPoint => {
+                self.waveform_state.out_point = self.waveform_state.playhead;
+            }
+            ToolbarAction::GoToInPoint => {
+                self.waveform_state.playhead = self.waveform_state.in_point;
+                self.waveform_state.ensure_visible(self.waveform_state.playhead);
+            }
+            ToolbarAction::GoToOutPoint => {
+                self.waveform_state.playhead = self.waveform_state.out_point;
+                self.waveform_state.ensure_visible(self.waveform_state.playhead);
+            }
+            ToolbarAction::GoToStart => {
+                self.waveform_state.playhead = 0;
+                self.waveform_state.ensure_visible(0);
+            }
+            ToolbarAction::GoToEnd => {
+                if let Some(el) = &self.edit_list {
+                    let end = el.total_frames();
+                    self.waveform_state.playhead = end;
+                    self.waveform_state.ensure_visible(end);
+                }
+            }
+            ToolbarAction::NudgeLeft => {
+                let sr = self.audio_buffer.as_ref().map_or(44100, |b| b.sample_rate);
+                let step = (sr / 100).max(1) as usize;
+                self.waveform_state.playhead = self.waveform_state.playhead.saturating_sub(step);
+                self.waveform_state.ensure_visible(self.waveform_state.playhead);
+            }
+            ToolbarAction::NudgeRight => {
+                let sr = self.audio_buffer.as_ref().map_or(44100, |b| b.sample_rate);
+                let step = (sr / 100).max(1) as usize;
+                let total = self.edit_list.as_ref().map_or(0, |el| el.total_frames());
+                self.waveform_state.playhead = (self.waveform_state.playhead + step).min(total);
+                self.waveform_state.ensure_visible(self.waveform_state.playhead);
+            }
             ToolbarAction::SelectAll => {
                 if let Some(el) = &self.edit_list {
                     let total = el.total_frames();
@@ -340,11 +411,13 @@ impl BarberApp {
                     Err(e) => self.error_message = Some(format!("Playback init failed: {}", e)),
                 }
 
+                let num_frames = buffer.num_frames;
                 self.audio_buffer = Some(buffer);
                 self.peak_data = Some(peaks);
                 self.edit_list = Some(edit_list);
                 self.file_path = Some(path);
                 self.waveform_state = WaveformState::default();
+                self.waveform_state.out_point = num_frames;
                 self.history.clear();
                 self.last_action = None;
                 self.dirty = false;
@@ -397,10 +470,12 @@ impl BarberApp {
         if let Some(el) = &mut self.edit_list {
             el.ripple_delete(start, end);
             self.waveform_state.selection = None;
-            if self.waveform_state.playhead >= end {
-                self.waveform_state.playhead -= end - start;
-            } else if self.waveform_state.playhead > start {
-                self.waveform_state.playhead = start;
+            for point in [&mut self.waveform_state.playhead, &mut self.waveform_state.in_point, &mut self.waveform_state.out_point] {
+                if *point >= end {
+                    *point -= end - start;
+                } else if *point > start {
+                    *point = start;
+                }
             }
         }
         self.post_edit(old_total);
@@ -499,6 +574,8 @@ impl BarberApp {
             }
             let max_scroll = (new_total as f64 - self.waveform_state.last_width as f64 * self.waveform_state.zoom).max(0.0);
             self.waveform_state.scroll_offset = self.waveform_state.scroll_offset.min(max_scroll);
+            self.waveform_state.in_point = self.waveform_state.in_point.min(new_total);
+            self.waveform_state.out_point = self.waveform_state.out_point.min(new_total).max(self.waveform_state.in_point);
         }
         self.sync_playback_engine();
     }
@@ -608,6 +685,12 @@ fn action_label(action: &ToolbarAction) -> Option<&'static str> {
         ToolbarAction::RemoveDC => Some("Remove DC"),
         ToolbarAction::SelectAll => Some("Select All"),
         ToolbarAction::Export => Some("Exported"),
+        ToolbarAction::SetInPoint => Some("Set In Point"),
+        ToolbarAction::SetOutPoint => Some("Set Out Point"),
+        ToolbarAction::GoToInPoint => Some("Go to In"),
+        ToolbarAction::GoToOutPoint => Some("Go to Out"),
+        ToolbarAction::GoToStart => Some("Go to Start"),
+        ToolbarAction::GoToEnd => Some("Go to End"),
         _ => None,
     }
 }

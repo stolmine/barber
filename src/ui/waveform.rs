@@ -12,6 +12,8 @@ pub struct WaveformState {
     pub last_width: f32,
     pub needs_fit: bool,
     pub phantom_playhead: Option<usize>,
+    pub in_point: usize,
+    pub out_point: usize,
     drag_start: Option<usize>,
 }
 
@@ -25,6 +27,8 @@ impl Default for WaveformState {
             last_width: 0.0,
             needs_fit: true,
             phantom_playhead: None,
+            in_point: 0,
+            out_point: 0,
             drag_start: None,
         }
     }
@@ -236,6 +240,7 @@ impl<'a> egui::Widget for WaveformWidget<'a> {
         }
 
         draw_selection(&painter, self.state, waveform_rect, total_frames);
+        draw_in_out_points(&painter, self.state, waveform_rect, total_frames);
         draw_phantom_playhead(&painter, self.state, waveform_rect, self.peaks, self.edit_list, num_channels, channel_height);
         draw_playhead(&painter, self.state, waveform_rect);
 
@@ -348,6 +353,31 @@ fn draw_selection(painter: &Painter, state: &WaveformState, rect: Rect, total_fr
     );
     painter.rect_filled(sel_rect, 0.0, Color32::from_rgba_unmultiplied(100, 180, 255, 40));
     painter.rect_stroke(sel_rect, 0.0, Stroke::new(1.0, Color32::from_rgba_unmultiplied(100, 180, 255, 120)), StrokeKind::Middle);
+}
+
+fn draw_in_out_points(painter: &Painter, state: &WaveformState, rect: Rect, total_frames: usize) {
+    let draw_marker = |frame: usize, color: Color32| {
+        let x = state.frame_to_x(frame, &rect);
+        if x >= rect.left() && x <= rect.right() {
+            let dash_len = 4.0;
+            let gap_len = 3.0;
+            let mut y = rect.top();
+            while y < rect.bottom() {
+                let end_y = (y + dash_len).min(rect.bottom());
+                painter.line_segment(
+                    [Pos2::new(x, y), Pos2::new(x, end_y)],
+                    Stroke::new(1.0, color),
+                );
+                y += dash_len + gap_len;
+            }
+        }
+    };
+    if state.in_point > 0 {
+        draw_marker(state.in_point, Color32::from_rgb(80, 220, 100));
+    }
+    if state.out_point > 0 && state.out_point < total_frames {
+        draw_marker(state.out_point, Color32::from_rgb(220, 80, 80));
+    }
 }
 
 fn draw_phantom_playhead(

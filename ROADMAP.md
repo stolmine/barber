@@ -178,6 +178,23 @@ Project Setup
 34. Select all — Cmd+A or double-click waveform selects entire file
 35. Quit keybind — Cmd+Q with macOS native menu disabled to allow app-level intercept
 
+## v0.1.6 Features (shipped)
+36. Play from selection — Play starts from selection start when a region is selected
+37. Action history status bar — right-justified last action readout with affected timespan
+38. Full-file reverse — Reverse operates on entire file when no selection, available without selection in menu/keybinds
+39. Full-file remove DC — Remove DC operates on entire file when no selection (already worked, gate was correct)
+
+## v0.1.7 Features (shipped)
+40. In/out points — Shift+I / Shift+O set markers at playhead, I / O jump to them. Dashed green/red lines. Clamped after edits, ripple-shifted on ripple delete
+41. Keystroke tracking — status bar shows held modifier keys (⌘⇧⌥) live, groundwork for vim-style chained keybinds
+42. Custom font — JetBrains Mono Nerd Font bundled for full glyph coverage (modifier symbols, nerd font icons)
+43. Keybind forward-compat — new default keybinds merge into existing user config without overwriting customizations
+
+## v0.1.8 Features (shipped)
+44. In/out constrained playback — Play respects in/out bounds: stops at out_point, loops between in/out when loop enabled. Selection still overrides in/out (DAW convention)
+45. Arrow key navigation — Up/Down jump to start/end of file, Left/Right nudge playhead by 10ms. All configurable via keybinds.toml
+46. Stop respects in/out — Stop resets playhead to in_point when in/out bounds are set, otherwise resets to 0
+
 ## v0.2 Wishlist
 
 ### Editing
@@ -192,7 +209,6 @@ Project Setup
 - **Anti-aliased waveforms:** Smooth rendering instead of per-pixel lines
 
 ### Playback
-- **In/out points:** Set in/out markers at playhead position with Shift+I / Shift+O. Jump to in/out point with I / O. Default to file start/end on load. Constrain playback and export to in/out range
 - **Speed/pitch control:** Variable playback rate with optional pitch preservation
 - **Playback volume control:** Separate output gain from waveform amplitude
 
@@ -201,11 +217,11 @@ Project Setup
 - **BPM detection and beat grid:** Adjustable beat grid for quantized edits with quantized selection on hotkey/toggle
 
 ### UI Polish (last priority)
+- **Custom styling for in/out points:** Current dashed lines are hard to see — need better visual treatment (thicker, labels, triangular markers, or glow). Add shading/tint of the region between in and out points when they are set off defaults
 - **Sexier UI:** Better colors, typography, spacing, custom styling
 - **Tabbed concurrent projects:** Open multiple files, splice material between them
 - **Metering:** just simple stereo metering with themable colors, could be cute with an ascii option borrowed from monokit
 - **Minimap:** adaptive overview of waveform when zoomed
-- **Keystroke tracking on status bar:** i am thinking we might gor for vim style chained keybinds for some actions, it would be useful to detect when modifiers are hit and display held and eventually input key combos
 
 ### Infrastructure
 - Async file loading with progress bar

@@ -42,6 +42,11 @@ pub fn menu_bar_ui(
 
         ui.menu_button("Transport", |ui| {
             menu_item(ui, keybinds, "PlaySelection", "Play Selection", has_selection, &mut action);
+            ui.separator();
+            menu_item(ui, keybinds, "SetInPoint", "Set In Point", has_file, &mut action);
+            menu_item(ui, keybinds, "SetOutPoint", "Set Out Point", has_file, &mut action);
+            menu_item(ui, keybinds, "GoToInPoint", "Go to In", has_file, &mut action);
+            menu_item(ui, keybinds, "GoToOutPoint", "Go to Out", has_file, &mut action);
         });
 
         ui.menu_button("View", |ui| {
@@ -87,6 +92,10 @@ fn menu_item(
             "ZoomIn" => Some(ToolbarAction::ZoomIn),
             "ZoomOut" => Some(ToolbarAction::ZoomOut),
             "ZoomToFit" => Some(ToolbarAction::ZoomToFit),
+            "SetInPoint" => Some(ToolbarAction::SetInPoint),
+            "SetOutPoint" => Some(ToolbarAction::SetOutPoint),
+            "GoToInPoint" => Some(ToolbarAction::GoToInPoint),
+            "GoToOutPoint" => Some(ToolbarAction::GoToOutPoint),
             _ => None,
         };
         ui.close_menu();

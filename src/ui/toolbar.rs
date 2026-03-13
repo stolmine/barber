@@ -25,6 +25,14 @@ pub enum ToolbarAction {
     ToggleFade,
     RemoveDC,
     SelectAll,
+    SetInPoint,
+    SetOutPoint,
+    GoToInPoint,
+    GoToOutPoint,
+    GoToStart,
+    GoToEnd,
+    NudgeLeft,
+    NudgeRight,
     Quit,
 }
 

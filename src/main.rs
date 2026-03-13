@@ -22,5 +22,19 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
-    eframe::run_native("Barber", options, Box::new(|_cc| Ok(Box::new(app::BarberApp::default()))))
+    eframe::run_native("Barber", options, Box::new(|cc| {
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            "jbmono".to_owned(),
+            std::sync::Arc::new(egui::FontData::from_static(
+                include_bytes!("../assets/JetBrainsMonoNF-Regular.ttf"),
+            )),
+        );
+        fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap()
+            .insert(0, "jbmono".to_owned());
+        fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap()
+            .insert(0, "jbmono".to_owned());
+        cc.egui_ctx.set_fonts(fonts);
+        Ok(Box::new(app::BarberApp::default()))
+    }))
 }
