@@ -40,6 +40,7 @@ impl Default for Keybinds {
         b.insert("Export".into(), k(true, false, false, "E"));
         b.insert("Stop".into(), k(false, false, false, "Escape"));
         b.insert("Reverse".into(), k(true, false, false, "R"));
+        b.insert("ChangeSpeed".into(), k(true, true, false, "R"));
         b.insert("Normalize".into(), k(true, true, false, "N"));
         b.insert("RemoveDC".into(), k(true, true, false, "D"));
         b.insert("SelectAll".into(), k(true, false, false, "A"));
@@ -138,6 +139,7 @@ impl Keybinds {
                 "Export" if has_file => Some(ToolbarAction::Export),
                 "Stop" => Some(ToolbarAction::Stop),
                 "Reverse" if has_file => Some(ToolbarAction::Reverse),
+                "ChangeSpeed" if has_file => Some(ToolbarAction::ChangeSpeed),
                 "Normalize" if has_file => Some(ToolbarAction::Normalize),
                 "RemoveDC" if has_file => Some(ToolbarAction::RemoveDC),
                 "ToggleFade" if has_file => Some(ToolbarAction::ToggleFade),

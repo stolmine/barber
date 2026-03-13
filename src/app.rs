@@ -32,6 +32,12 @@ pub struct BarberApp {
     was_playing: bool,
     dirty: bool,
     show_quit_dialog: bool,
+    show_speed_dialog: bool,
+    speed_pct: f32,
+    speed_semitones: f32,
+    speed_cents: f32,
+    speed_preview: bool,
+    speed_interp: u32,
     prev_modifiers: egui::Modifiers,
     minimap_drag: MinimapDrag,
     pending_file_op: Option<std::sync::mpsc::Receiver<Option<PathBuf>>>,
@@ -59,6 +65,12 @@ impl Default for BarberApp {
             was_playing: false,
             dirty: false,
             show_quit_dialog: false,
+            show_speed_dialog: false,
+            speed_pct: 100.0,
+            speed_semitones: 0.0,
+            speed_cents: 0.0,
+            speed_preview: false,
+            speed_interp: 1,
             prev_modifiers: egui::Modifiers::NONE,
             minimap_drag: MinimapDrag::None,
             pending_file_op: None,
@@ -102,6 +114,114 @@ impl eframe::App for BarberApp {
                         }
                         if ui.button("Cancel").clicked() {
                             self.show_quit_dialog = false;
+                        }
+                    });
+                });
+        }
+
+        if self.show_speed_dialog {
+            egui::Window::new("Change Speed")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Speed:");
+                        let resp = ui.add(egui::DragValue::new(&mut self.speed_pct)
+                            .range(10.0..=400.0)
+                            .speed(0.5)
+                            .suffix("%"));
+                        if resp.changed() {
+                            let total_st = 12.0 * (self.speed_pct / 100.0).log2();
+                            self.speed_semitones = total_st.round();
+                            self.speed_cents = (total_st - self.speed_semitones) * 100.0;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Semitones:");
+                        let st_resp = ui.add(egui::DragValue::new(&mut self.speed_semitones)
+                            .range(-24.0..=24.0)
+                            .speed(0.1));
+                        ui.label("Cents:");
+                        let ct_resp = ui.add(egui::DragValue::new(&mut self.speed_cents)
+                            .range(-50.0..=50.0)
+                            .speed(0.5));
+                        if st_resp.changed() || ct_resp.changed() {
+                            self.speed_pct = 100.0 * 2.0f32.powf((self.speed_semitones + self.speed_cents / 100.0) / 12.0);
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Interpolation:");
+                        let labels = ["Nearest", "Linear", "Cubic"];
+                        for (i, label) in labels.iter().enumerate() {
+                            if ui.selectable_label(self.speed_interp == i as u32, *label).clicked() {
+                                self.speed_interp = i as u32;
+                                self.audio_levels.set_interpolation(self.speed_interp);
+                            }
+                        }
+                    });
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        let preview_label = if self.speed_preview { "Stop Preview" } else { "Preview" };
+                        if ui.button(preview_label).clicked() {
+                            self.speed_preview = !self.speed_preview;
+                            if self.speed_preview {
+                                let speed = self.speed_pct / 100.0;
+                                self.audio_levels.set_speed(speed);
+                                self.audio_levels.set_interpolation(self.speed_interp);
+                                if let Some(engine) = &self.playback_engine {
+                                    let (start, stop) = self.waveform_state.selection
+                                        .map(|(s, e)| (s, Some(e)))
+                                        .unwrap_or((0, None));
+                                    engine.seek(start);
+                                    engine.set_loop(false, 0, None);
+                                    engine.set_stop_at(stop);
+                                    engine.play();
+                                }
+                            } else {
+                                if let Some(engine) = &self.playback_engine {
+                                    engine.stop();
+                                }
+                                self.audio_levels.set_speed(1.0);
+                            }
+                        }
+                        if ui.button("OK").clicked() {
+                            let speed = self.speed_pct / 100.0;
+                            if let Some(edit_list) = &mut self.edit_list {
+                                self.history.push(edit_list.clone());
+                                let total = edit_list.total_frames();
+                                let (start, end) = self.waveform_state.selection
+                                    .unwrap_or((0, total));
+                                edit_list.apply_speed_range(start, end, speed);
+                                if let Some(engine) = &self.playback_engine {
+                                    engine.set_edit_list(edit_list.clone());
+                                }
+                                let new_total = edit_list.total_frames();
+                                let new_end = if end == total { new_total } else {
+                                    start + ((end - start) as f64 / speed as f64).round() as usize
+                                };
+                                self.waveform_state.selection = Some((start, new_end.min(new_total)));
+                                self.waveform_state.out_point = self.waveform_state.out_point.min(new_total);
+                                self.dirty = true;
+                            }
+                            self.audio_levels.set_speed(1.0);
+                            if self.speed_preview {
+                                if let Some(engine) = &self.playback_engine {
+                                    engine.stop();
+                                }
+                            }
+                            self.show_speed_dialog = false;
+                            self.speed_preview = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            if self.speed_preview {
+                                if let Some(engine) = &self.playback_engine {
+                                    engine.stop();
+                                }
+                            }
+                            self.audio_levels.set_speed(1.0);
+                            self.show_speed_dialog = false;
+                            self.speed_preview = false;
                         }
                     });
                 });
@@ -263,7 +383,7 @@ impl eframe::App for BarberApp {
             }
         });
 
-        if action.is_none() {
+        if action.is_none() && !self.show_speed_dialog && !self.show_quit_dialog {
             action = self.keybinds.check_input(ctx, is_playing, has_selection, has_file, can_undo, can_redo, has_clipboard);
         }
 
@@ -474,6 +594,16 @@ impl BarberApp {
                 self.waveform_state.vertical_zoom = 1.0;
             }
             ToolbarAction::Quit => {}
+            ToolbarAction::ChangeSpeed => {
+                let current_speed = self.audio_levels.speed();
+                self.speed_pct = current_speed * 100.0;
+                let total_st = 12.0 * (self.speed_pct / 100.0).log2();
+                self.speed_semitones = total_st.round();
+                self.speed_cents = (total_st - self.speed_semitones) * 100.0;
+                self.speed_interp = self.audio_levels.interpolation();
+                self.speed_preview = false;
+                self.show_speed_dialog = true;
+            }
         }
     }
 
@@ -791,6 +921,7 @@ fn action_label(action: &ToolbarAction) -> Option<&'static str> {
         ToolbarAction::RemoveDC => Some("Remove DC"),
         ToolbarAction::SelectAll => Some("Select All"),
         ToolbarAction::Export => Some("Exported"),
+        ToolbarAction::ChangeSpeed => Some("Change Speed"),
         ToolbarAction::SetInPoint => Some("Set In Point"),
         ToolbarAction::SetOutPoint => Some("Set Out Point"),
         ToolbarAction::GoToInPoint => Some("Go to In"),

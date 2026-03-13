@@ -155,6 +155,10 @@ Export -------------------------------------+
 ### Interaction
 - **BPM detection and beat grid:** Adjustable beat grid for quantized edits with quantized selection on hotkey/toggle
 
+### Status Bar
+- **Zoom percentages:** Show X (horizontal) and Y (vertical) zoom levels in status bar
+- **Undo/Redo labels:** Undo and Redo menu items and status bar should show the name of the action being undone/redone (e.g. "Undo Fade In", "Redo Ripple Delete")
+
 ### UI Polish (last priority)
 - **Custom styling for in/out points:** Current dashed lines are hard to see — need better visual treatment (thicker, labels, triangular markers, or glow). Add shading/tint of the region between in and out points when they are set off defaults
 - **Sexier UI:** Better colors, typography, spacing, custom styling

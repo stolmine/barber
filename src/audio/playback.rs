@@ -41,6 +41,7 @@ pub struct PlaybackState {
 
 pub struct PlaybackEngine {
     state: Arc<Mutex<PlaybackState>>,
+    levels: AudioLevels,
     _audio_unit: AudioUnit,
 }
 
@@ -67,7 +68,7 @@ impl PlaybackEngine {
         let source_channels = buffer.channels as usize;
 
         let callback_state = Arc::clone(&state);
-        let callback_levels = levels;
+        let callback_levels = levels.clone();
 
         type Args = render_callback::Args<data::NonInterleaved<f32>>;
         audio_unit.set_render_callback(move |args: Args| {
@@ -115,19 +116,38 @@ impl PlaybackEngine {
                     continue;
                 }
 
-                let resolved = guard.edit_list.resolve(pos);
+                let interp_mode = callback_levels.interpolation();
+                let frac = guard.position_frac;
+                let resolved = guard.edit_list.resolve_exact(pos, frac);
 
                 for (ch_idx, channel) in data.channels_mut().enumerate() {
                     if ch_idx < device_channels {
                         let pre_fader = match resolved {
-                            Some((sf, gain, dc_offset)) => {
+                            Some((sf, sf_frac, gain, dc_offset)) => {
                                 let src_ch = ch_idx.min(source_channels - 1);
-                                (guard.buffer.samples[src_ch]
-                                    .get(sf)
-                                    .copied()
-                                    .unwrap_or(0.0)
-                                    - dc_offset)
-                                    * gain
+                                let buf = &guard.buffer.samples[src_ch];
+                                let read = |i: usize| -> f32 {
+                                    (buf.get(i).copied().unwrap_or(0.0) - dc_offset) * gain
+                                };
+                                match interp_mode {
+                                    1 => {
+                                        let s0 = read(sf);
+                                        let s1 = read(sf + 1);
+                                        s0 + sf_frac as f32 * (s1 - s0)
+                                    }
+                                    2 => {
+                                        let sm1 = read(sf.saturating_sub(1));
+                                        let s0 = read(sf);
+                                        let s1 = read(sf + 1);
+                                        let s2 = read(sf + 2);
+                                        let t = sf_frac as f32;
+                                        let c1 = 0.5 * (s1 - sm1);
+                                        let c2 = sm1 - 2.5 * s0 + 2.0 * s1 - 0.5 * s2;
+                                        let c3 = 0.5 * (s2 - sm1) + 1.5 * (s0 - s1);
+                                        ((c3 * t + c2) * t + c1) * t + s0
+                                    }
+                                    _ => read(sf),
+                                }
                             }
                             None => 0.0,
                         };
@@ -138,7 +158,8 @@ impl PlaybackEngine {
                     }
                 }
 
-                guard.position_frac += rate_ratio;
+                let speed = callback_levels.speed();
+                guard.position_frac += rate_ratio * speed as f64;
                 let advance = guard.position_frac as usize;
                 guard.position += advance;
                 guard.position_frac -= advance as f64;
@@ -154,6 +175,7 @@ impl PlaybackEngine {
 
         Ok(PlaybackEngine {
             state,
+            levels,
             _audio_unit: audio_unit,
         })
     }
@@ -208,6 +230,10 @@ impl PlaybackEngine {
         if let Ok(mut s) = self.state.lock() {
             s.stop_at = frame;
         }
+    }
+
+    pub fn set_speed(&self, speed: f32) {
+        self.levels.set_speed(speed);
     }
 
     pub fn set_edit_list(&self, edit_list: EditList) {

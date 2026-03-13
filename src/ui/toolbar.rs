@@ -49,6 +49,7 @@ pub enum ToolbarAction {
     VerticalZoomIn,
     VerticalZoomOut,
     VerticalZoomReset,
+    ChangeSpeed,
 }
 
 impl ToolbarAction {

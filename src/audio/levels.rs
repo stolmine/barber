@@ -4,20 +4,24 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct AudioLevels {
     volume: Arc<AtomicU32>,
+    speed: Arc<AtomicU32>,
     peak_l: Arc<AtomicU32>,
     peak_r: Arc<AtomicU32>,
     display_l: Arc<AtomicU32>,
     display_r: Arc<AtomicU32>,
+    interp: Arc<AtomicU32>,
 }
 
 impl AudioLevels {
     pub fn new() -> Self {
         Self {
             volume: Arc::new(AtomicU32::new(1.0f32.to_bits())),
+            speed: Arc::new(AtomicU32::new(1.0f32.to_bits())),
             peak_l: Arc::new(AtomicU32::new(0u32)),
             peak_r: Arc::new(AtomicU32::new(0u32)),
             display_l: Arc::new(AtomicU32::new(0u32)),
             display_r: Arc::new(AtomicU32::new(0u32)),
+            interp: Arc::new(AtomicU32::new(0)),
         }
     }
 
@@ -27,6 +31,22 @@ impl AudioLevels {
 
     pub fn set_volume(&self, v: f32) {
         self.volume.store(v.to_bits(), Relaxed);
+    }
+
+    pub fn speed(&self) -> f32 {
+        f32::from_bits(self.speed.load(Relaxed))
+    }
+
+    pub fn set_speed(&self, s: f32) {
+        self.speed.store(s.to_bits(), Relaxed);
+    }
+
+    pub fn interpolation(&self) -> u32 {
+        self.interp.load(Relaxed)
+    }
+
+    pub fn set_interpolation(&self, mode: u32) {
+        self.interp.store(mode, Relaxed);
     }
 
     pub fn set_peaks(&self, l: f32, r: f32) {

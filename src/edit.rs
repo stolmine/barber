@@ -35,25 +35,32 @@ pub struct Region {
     pub fade_out: usize,
     pub fade_in_curve: FadeCurve,
     pub fade_out_curve: FadeCurve,
+    pub speed: f32,
 }
 
 impl Region {
     pub fn source(source_start: usize, source_end: usize) -> Self {
-        Self { kind: RegionKind::Source { source_start, source_end }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0, fade_in_curve: FadeCurve::Linear, fade_out_curve: FadeCurve::Linear }
+        Self { kind: RegionKind::Source { source_start, source_end }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0, fade_in_curve: FadeCurve::Linear, fade_out_curve: FadeCurve::Linear, speed: 1.0 }
     }
     pub fn silence(len: usize) -> Self {
-        Self { kind: RegionKind::Silence { len }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0, fade_in_curve: FadeCurve::Linear, fade_out_curve: FadeCurve::Linear }
+        Self { kind: RegionKind::Silence { len }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0, fade_in_curve: FadeCurve::Linear, fade_out_curve: FadeCurve::Linear, speed: 1.0 }
     }
     pub fn reversed(source_start: usize, source_end: usize) -> Self {
-        Self { kind: RegionKind::Reversed { source_start, source_end }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0, fade_in_curve: FadeCurve::Linear, fade_out_curve: FadeCurve::Linear }
+        Self { kind: RegionKind::Reversed { source_start, source_end }, gain: 1.0, dc_offset: 0.0, fade_in: 0, fade_out: 0, fade_in_curve: FadeCurve::Linear, fade_out_curve: FadeCurve::Linear, speed: 1.0 }
     }
 
-    pub fn len(&self) -> usize {
+    pub fn source_len(&self) -> usize {
         match &self.kind {
             RegionKind::Source { source_start, source_end } => source_end - source_start,
             RegionKind::Silence { len } => *len,
             RegionKind::Reversed { source_start, source_end } => source_end - source_start,
         }
+    }
+
+    pub fn len(&self) -> usize {
+        let sl = self.source_len();
+        if self.speed == 1.0 { return sl; }
+        (sl as f64 / self.speed as f64).round().max(1.0) as usize
     }
 }
 
@@ -91,10 +98,43 @@ impl EditList {
                     fade_in_env * fade_out_env
                 } else { 1.0 };
                 let effective_gain = region.gain * fade_gain;
+                let source_pos = if region.speed == 1.0 { pos } else {
+                    (pos as f64 * region.speed as f64) as usize
+                };
                 return match &region.kind {
-                    RegionKind::Source { source_start, .. } => Some((source_start + pos, effective_gain, region.dc_offset)),
+                    RegionKind::Source { source_start, .. } => Some((source_start + source_pos, effective_gain, region.dc_offset)),
                     RegionKind::Silence { .. } => None,
-                    RegionKind::Reversed { source_end, .. } => Some((source_end - 1 - pos, effective_gain, region.dc_offset)),
+                    RegionKind::Reversed { source_end, .. } => Some((source_end - 1 - source_pos, effective_gain, region.dc_offset)),
+                };
+            }
+            offset += rlen;
+        }
+        None
+    }
+
+    pub fn resolve_exact(&self, edit_frame: usize, edit_frac: f64) -> Option<(usize, f64, f32, f32)> {
+        let mut offset = 0;
+        for region in &self.regions {
+            let rlen = region.len();
+            if edit_frame < offset + rlen {
+                let pos = edit_frame - offset;
+                let fade_gain = if self.fades_enabled {
+                    let fade_in_env = if region.fade_in > 0 && pos < region.fade_in {
+                        region.fade_in_curve.apply(pos as f32 / region.fade_in as f32)
+                    } else { 1.0 };
+                    let fade_out_env = if region.fade_out > 0 && pos >= rlen - region.fade_out {
+                        region.fade_out_curve.apply((rlen - 1 - pos) as f32 / region.fade_out as f32)
+                    } else { 1.0 };
+                    fade_in_env * fade_out_env
+                } else { 1.0 };
+                let effective_gain = region.gain * fade_gain;
+                let source_offset = (pos as f64 + edit_frac) * region.speed as f64;
+                let source_int = source_offset as usize;
+                let source_frac = source_offset - source_int as f64;
+                return match &region.kind {
+                    RegionKind::Source { source_start, .. } => Some((source_start + source_int, source_frac, effective_gain, region.dc_offset)),
+                    RegionKind::Silence { .. } => None,
+                    RegionKind::Reversed { source_end, .. } => Some((source_end - 1 - source_int, source_frac, effective_gain, region.dc_offset)),
                 };
             }
             offset += rlen;
@@ -142,10 +182,13 @@ impl EditList {
                         fade_in_env * fade_out_env
                     } else { 1.0 };
                     let effective_gain = region.gain * fade_gain;
+                    let source_pos = if region.speed == 1.0 { pos } else {
+                        (pos as f64 * region.speed as f64) as usize
+                    };
                     let result = match &region.kind {
-                        RegionKind::Source { source_start, .. } => Some(Some((source_start + pos, effective_gain, region.dc_offset))),
+                        RegionKind::Source { source_start, .. } => Some(Some((source_start + source_pos, effective_gain, region.dc_offset))),
                         RegionKind::Silence { .. } => Some(None),
-                        RegionKind::Reversed { source_end, .. } => Some(Some((source_end - 1 - pos, effective_gain, region.dc_offset))),
+                        RegionKind::Reversed { source_end, .. } => Some(Some((source_end - 1 - source_pos, effective_gain, region.dc_offset))),
                     };
                     edit_pos += 1;
                     return result;
@@ -378,12 +421,18 @@ impl EditList {
                     fi * fo
                 } else { 1.0 };
                 let gain = region.gain * fade_gain;
+                let src_inner_start = if region.speed == 1.0 { inner_start } else {
+                    (inner_start as f64 * region.speed as f64) as usize
+                };
+                let src_inner_end = if region.speed == 1.0 { inner_end } else {
+                    (inner_end as f64 * region.speed as f64) as usize
+                };
                 match &region.kind {
                     RegionKind::Source { source_start, .. } => {
-                        f(source_start + inner_start, source_start + inner_end, gain);
+                        f(source_start + src_inner_start, source_start + src_inner_end, gain);
                     }
                     RegionKind::Reversed { source_end, .. } => {
-                        f(source_end - inner_end, source_end - inner_start, gain);
+                        f(source_end - src_inner_end, source_end - src_inner_start, gain);
                     }
                     RegionKind::Silence { .. } => {}
                 }
@@ -400,6 +449,16 @@ impl EditList {
         }
         self.ripple_delete(start, end);
         self.insert(start, &extracted);
+    }
+
+    pub fn apply_speed_range(&mut self, start: usize, end: usize, speed: f32) {
+        if start >= end || speed <= 0.0 { return; }
+        let mut extracted = self.extract_regions(start, end);
+        for region in &mut extracted {
+            region.speed *= speed;
+        }
+        self.ripple_delete_inner(start, end, false);
+        self.insert_inner(start, &extracted, false);
     }
 
     pub fn set_dc_offset_range(&mut self, start: usize, end: usize, dc_offset: f32) {
@@ -488,14 +547,17 @@ impl EditList {
 }
 
 fn split_region_prefix(region: &Region, prefix_len: usize) -> Region {
+    let src_prefix = if region.speed == 1.0 { prefix_len } else {
+        (prefix_len as f64 * region.speed as f64).round() as usize
+    };
     let kind = match &region.kind {
         RegionKind::Source { source_start, .. } => RegionKind::Source {
             source_start: *source_start,
-            source_end: source_start + prefix_len,
+            source_end: source_start + src_prefix,
         },
-        RegionKind::Silence { .. } => RegionKind::Silence { len: prefix_len },
+        RegionKind::Silence { .. } => RegionKind::Silence { len: src_prefix },
         RegionKind::Reversed { source_end, .. } => RegionKind::Reversed {
-            source_start: source_end - prefix_len,
+            source_start: source_end - src_prefix,
             source_end: *source_end,
         },
     };
@@ -503,15 +565,21 @@ fn split_region_prefix(region: &Region, prefix_len: usize) -> Region {
 }
 
 fn split_region_suffix(region: &Region, inner_start: usize, inner_end: usize) -> Region {
+    let src_start = if region.speed == 1.0 { inner_start } else {
+        (inner_start as f64 * region.speed as f64).round() as usize
+    };
+    let src_end = if region.speed == 1.0 { inner_end } else {
+        (inner_end as f64 * region.speed as f64).round() as usize
+    };
     let kind = match &region.kind {
         RegionKind::Source { source_start, .. } => RegionKind::Source {
-            source_start: source_start + inner_start,
-            source_end: source_start + inner_end,
+            source_start: source_start + src_start,
+            source_end: source_start + src_end,
         },
-        RegionKind::Silence { .. } => RegionKind::Silence { len: inner_end - inner_start },
+        RegionKind::Silence { .. } => RegionKind::Silence { len: src_end - src_start },
         RegionKind::Reversed { source_end, .. } => RegionKind::Reversed {
-            source_start: source_end - inner_end,
-            source_end: source_end - inner_start,
+            source_start: source_end - src_end,
+            source_end: source_end - src_start,
         },
     };
     Region { kind, ..region.clone() }

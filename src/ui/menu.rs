@@ -37,6 +37,7 @@ pub fn menu_bar_ui(
             menu_item(ui, keybinds, "Reverse", "Reverse", has_file, &mut action);
             menu_item(ui, keybinds, "Normalize", "Normalize", has_file, &mut action);
             menu_item(ui, keybinds, "RemoveDC", "Remove DC Offset", has_file, &mut action);
+            menu_item(ui, keybinds, "ChangeSpeed", "Change Speed...", has_file, &mut action);
             menu_item(ui, keybinds, "ToggleFade", "Toggle Fades", has_file, &mut action);
             ui.separator();
             ui.add_enabled_ui(has_selection, |ui| {
@@ -104,6 +105,7 @@ fn menu_item(
             "Reverse" => Some(ToolbarAction::Reverse),
             "Normalize" => Some(ToolbarAction::Normalize),
             "RemoveDC" => Some(ToolbarAction::RemoveDC),
+            "ChangeSpeed" => Some(ToolbarAction::ChangeSpeed),
             "ToggleFade" => Some(ToolbarAction::ToggleFade),
             "SelectAll" => Some(ToolbarAction::SelectAll),
             "Quit" => Some(ToolbarAction::Quit),
